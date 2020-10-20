@@ -10,13 +10,13 @@ import (
 )
 
 type PasscodeEmailSender struct {
-	MailService    mail.SimpleMailService
+	MailSender     mail.SimpleMailSender
 	From           mail.Email
 	TemplateLoader mail.TemplateLoader
 }
 
-func NewPasscodeEmailSender(mailService mail.SimpleMailService, from mail.Email, templateLoader mail.TemplateLoader) *PasscodeEmailSender {
-	return &PasscodeEmailSender{mailService, from, templateLoader}
+func NewPasscodeEmailSender(mailSender mail.SimpleMailSender, from mail.Email, templateLoader mail.TemplateLoader) *PasscodeEmailSender {
+	return &PasscodeEmailSender{mailSender, from, templateLoader}
 }
 
 func truncatingSprintf(str string, args ...interface{}) string {
@@ -50,5 +50,5 @@ func (s *PasscodeEmailSender) Send(ctx context.Context, to string, code string, 
 	toMail := params.(string)
 	mailTo := []mail.Email{{Address: toMail}}
 	mailData := mail.NewSimpleHtmlMail(s.From, subject, mailTo, nil, content)
-	return s.MailService.Send(*mailData)
+	return s.MailSender.Send(*mailData)
 }
