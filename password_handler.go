@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-type PasswordActivityLogService interface {
-	SaveLog(ctx context.Context, resource string, action string, success bool, desc string) error
+type PasswordActivityLogWriter interface {
+	Write(ctx context.Context, resource string, action string, success bool, desc string) error
 }
 
 type ValueDecrypter interface {
@@ -20,11 +20,11 @@ type PasswordHandler struct {
 	PasswordService PasswordService
 	Decrypter       ValueDecrypter
 	EncryptionKey   string
-	LogService      PasswordActivityLogService
+	LogWriter       PasswordActivityLogWriter
 }
 
-func NewPasswordHandler(authenticationService PasswordService, decrypter ValueDecrypter, encryptionKey string, logService PasswordActivityLogService) *PasswordHandler {
-	return &PasswordHandler{authenticationService, decrypter, encryptionKey, logService}
+func NewPasswordHandler(authenticationService PasswordService, decrypter ValueDecrypter, encryptionKey string, logWriter PasswordActivityLogWriter) *PasswordHandler {
+	return &PasswordHandler{authenticationService, decrypter, encryptionKey, logWriter}
 }
 
 func NewDefaultPasswordHandler(authenticationService PasswordService) *PasswordHandler {
@@ -54,9 +54,9 @@ func (c *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	}
 	result, er4 := c.PasswordService.ChangePassword(r.Context(), passwordChange)
 	if er4 != nil {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Change", false, er4.Error())
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Change", false, er4.Error())
 	} else {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Change", result > 0, "")
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Change", result > 0, "")
 	}
 }
 func (c *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +76,9 @@ func (c *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request)
 	}
 	result, er2 := c.PasswordService.ForgotPassword(r.Context(), email)
 	if er2 != nil {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Forgot", false, er2.Error())
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Forgot", false, er2.Error())
 	} else {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Forgot", result, "")
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Forgot", result, "")
 	}
 }
 func (c *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +98,9 @@ func (c *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 	}
 	result, er3 := c.PasswordService.ResetPassword(r.Context(), passwordReset)
 	if er3 != nil {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Reset", false, er3.Error())
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Reset", false, er3.Error())
 	} else {
-		Respond(w, r, http.StatusOK, result, c.LogService, "Password", "Reset", result == 1, "")
+		Respond(w, r, http.StatusOK, result, c.LogWriter, "Password", "Reset", result == 1, "")
 	}
 }
 func RespondString(w http.ResponseWriter, r *http.Request, code int, result string) {
@@ -108,13 +108,13 @@ func RespondString(w http.ResponseWriter, r *http.Request, code int, result stri
 	w.WriteHeader(code)
 	w.Write([]byte(result))
 }
-func Respond(w http.ResponseWriter, r *http.Request, code int, result interface{}, logService PasswordActivityLogService, resource string, action string, success bool, desc string) {
+func Respond(w http.ResponseWriter, r *http.Request, code int, result interface{}, logWriter PasswordActivityLogWriter, resource string, action string, success bool, desc string) {
 	response, _ := json.Marshal(result)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(response)
-	if logService != nil {
+	if logWriter != nil {
 		newCtx := context.WithValue(r.Context(), "request", r)
-		logService.SaveLog(newCtx, resource, action, success, desc)
+		logWriter.Write(newCtx, resource, action, success, desc)
 	}
 }
