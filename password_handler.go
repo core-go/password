@@ -18,7 +18,7 @@ type ValueDecrypter interface {
 type PasswordActionConfig struct {
 	Resource string `mapstructure:"resource"`
 	Change   string `mapstructure:"change"`
-	Reset    string `mapstructure:"feset"`
+	Reset    string `mapstructure:"reset"`
 	Forgot   string `mapstructure:"forgot"`
 }
 type PasswordHandler struct {
@@ -48,7 +48,7 @@ func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf
 		c.Reset = "reset"
 	}
 	if len(c.Forgot) == 0 {
-		c.Forgot = "Forgot"
+		c.Forgot = "forgot"
 	}
 	return &PasswordHandler{PasswordService: authenticationService, Config: c, LogError: logError, LogWriter: logWriter, Decrypter: decrypter, EncryptionKey: encryptionKey}
 }
@@ -65,7 +65,7 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 			msg := "Cannot decode PasswordChange model: "+er1.Error()
 			h.LogError(r.Context(), msg)
 		}
-		respondString(w, r, http.StatusBadRequest, "Cannot decode PasswordChange model")
+		http.Error(w, "Cannot decode PasswordChange model", http.StatusBadRequest)
 		return
 	}
 	if h.Decrypter != nil && len(h.EncryptionKey) > 0 {
@@ -75,7 +75,7 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 				msg := "cannot decode current password: " + er2.Error()
 				h.LogError(r.Context(), msg)
 			}
-			respondString(w, r, http.StatusBadRequest, "cannot decode current password")
+			http.Error(w, "cannot decode current password", http.StatusBadRequest)
 			return
 		}
 		decodedNewPassword, er3 := h.Decrypter.Decrypt(passwordChange.Password, h.EncryptionKey)
@@ -84,7 +84,8 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 				msg := "cannot decode new password: " + er3.Error()
 				h.LogError(r.Context(), msg)
 			}
-			respondString(w, r, http.StatusBadRequest, "cannot decode new password")
+			http.Error(w, "cannot decode new password", http.StatusBadRequest)
+			return
 		}
 		passwordChange.CurrentPassword = decodedCurrentPassword
 		passwordChange.Password = decodedNewPassword
@@ -114,7 +115,7 @@ func (h *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request)
 				msg := "Cannot get the body of 'Forgot Password': " + er1.Error()
 				h.LogError(r.Context(), msg)
 			}
-			respondString(w, r, http.StatusBadRequest, "Cannot get the body of 'Forgot Password'")
+			http.Error(w, "Cannot get the body of 'Forgot Password'", http.StatusBadRequest)
 			return
 		}
 		email = strings.Trim(string(b), " ")
@@ -138,7 +139,7 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 			msg := "Cannot decode PasswordReset model: "+er1.Error()
 			h.LogError(r.Context(), msg)
 		}
-		respondString(w, r, http.StatusBadRequest, "Cannot decode PasswordReset model")
+		http.Error(w, "Cannot decode PasswordReset model", http.StatusBadRequest)
 		return
 	}
 	if h.Decrypter != nil && len(h.EncryptionKey) > 0 {
@@ -148,7 +149,7 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 				msg := "cannot decode new password: "+er2.Error()
 				h.LogError(r.Context(), msg)
 			}
-			respondString(w, r, http.StatusBadRequest, "cannot decode new password")
+			http.Error(w, "cannot decode new password", http.StatusBadRequest)
 			return
 		}
 		passwordReset.Password = decodedNewPassword
@@ -163,11 +164,6 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 	} else {
 		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Reset, result == 1, "")
 	}
-}
-func respondString(w http.ResponseWriter, r *http.Request, code int, result string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	w.Write([]byte(result))
 }
 func respond(w http.ResponseWriter, r *http.Request, code int, result interface{}, logWriter PasswordActivityLogWriter, resource string, action string, success bool, desc string) {
 	response, _ := json.Marshal(result)
