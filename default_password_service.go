@@ -15,7 +15,7 @@ type DefaultPasswordService struct {
 	ResetPasscodeRepository  PasscodeRepository
 	ResetPasscodeSender      VerificationCodeSender
 	TokenBlacklistRepository TokenBlacklistRepository
-	Regexps                   []regexp.Regexp
+	Regexps                  []regexp.Regexp
 	DuplicateCount           int
 	TwoFactorRepository      TwoFactorsRepository
 	PasswordChangeExpires    int
@@ -260,9 +260,7 @@ func (s DefaultPasswordService) ResetPassword(ctx context.Context, passwordReset
 
 func deleteCode(ctx context.Context, codeService PasscodeRepository, id string) {
 	go func() {
-		timeOut := 10 * time.Second
-		ctxDelete, cancel := context.WithTimeout(ctx, timeOut)
-		defer cancel()
+		ctxDelete, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		_, err := codeService.Delete(ctxDelete, id)
 		if err != nil {
 			log.Println(err)
