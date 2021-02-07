@@ -8,10 +8,6 @@ import (
 	"strings"
 )
 
-type PasswordActivityLogWriter interface {
-	Write(ctx context.Context, resource string, action string, success bool, desc string) error
-}
-
 type ValueDecrypter interface {
 	Decrypt(cipherText string, secretKey string) (string, error)
 }
@@ -25,12 +21,12 @@ type PasswordHandler struct {
 	PasswordService PasswordService
 	Config          PasswordActionConfig
 	LogError        func(context.Context, string)
-	LogWriter       PasswordActivityLogWriter
+	WriteLog        func(ctx context.Context, resource string, action string, success bool, desc string) error
 	Decrypter       ValueDecrypter
 	EncryptionKey   string
 }
 
-func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), logWriter PasswordActivityLogWriter, decrypter ValueDecrypter, encryptionKey string) *PasswordHandler {
+func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error, decrypter ValueDecrypter, encryptionKey string) *PasswordHandler {
 	var c PasswordActionConfig
 	if conf != nil {
 		c.Resource = conf.Resource
@@ -50,11 +46,11 @@ func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf
 	if len(c.Forgot) == 0 {
 		c.Forgot = "forgot"
 	}
-	return &PasswordHandler{PasswordService: authenticationService, Config: c, LogError: logError, LogWriter: logWriter, Decrypter: decrypter, EncryptionKey: encryptionKey}
+	return &PasswordHandler{PasswordService: authenticationService, Config: c, LogError: logError, WriteLog: writeLog, Decrypter: decrypter, EncryptionKey: encryptionKey}
 }
 
-func NewPasswordHandler(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), logWriter PasswordActivityLogWriter) *PasswordHandler {
-	return NewPasswordHandlerWithDecrypter(authenticationService, conf, logError, logWriter, nil, "")
+func NewPasswordHandler(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error) *PasswordHandler {
+	return NewPasswordHandlerWithDecrypter(authenticationService, conf, logError, writeLog, nil, "")
 }
 
 func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +58,7 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	er1 := json.NewDecoder(r.Body).Decode(&passwordChange)
 	if er1 != nil {
 		if h.LogError != nil {
-			msg := "Cannot decode PasswordChange model: "+er1.Error()
+			msg := "Cannot decode PasswordChange model: " + er1.Error()
 			h.LogError(r.Context(), msg)
 		}
 		http.Error(w, "Cannot decode PasswordChange model", http.StatusBadRequest)
@@ -96,9 +92,9 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		if h.LogError != nil {
 			h.LogError(r.Context(), msg)
 		}
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Change, false, msg)
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Change, false, msg)
 	} else {
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Change, result > 0, "")
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Change, result > 0, "")
 	}
 }
 func (h *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
@@ -126,9 +122,9 @@ func (h *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request)
 		if h.LogError != nil {
 			h.LogError(r.Context(), msg)
 		}
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Forgot, false, msg)
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Forgot, false, msg)
 	} else {
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Forgot, result, "")
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Forgot, result, "")
 	}
 }
 func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +132,7 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 	er1 := json.NewDecoder(r.Body).Decode(&passwordReset)
 	if er1 != nil {
 		if h.LogError != nil {
-			msg := "Cannot decode PasswordReset model: "+er1.Error()
+			msg := "Cannot decode PasswordReset model: " + er1.Error()
 			h.LogError(r.Context(), msg)
 		}
 		http.Error(w, "Cannot decode PasswordReset model", http.StatusBadRequest)
@@ -146,7 +142,7 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 		decodedNewPassword, er2 := h.Decrypter.Decrypt(passwordReset.Password, h.EncryptionKey)
 		if er2 != nil {
 			if h.LogError != nil {
-				msg := "cannot decode new password: "+er2.Error()
+				msg := "cannot decode new password: " + er2.Error()
 				h.LogError(r.Context(), msg)
 			}
 			http.Error(w, "cannot decode new password", http.StatusBadRequest)
@@ -160,18 +156,18 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 		if h.LogError != nil {
 			h.LogError(r.Context(), msg)
 		}
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Reset, false, msg)
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Reset, false, msg)
 	} else {
-		respond(w, r, http.StatusOK, result, h.LogWriter, h.Config.Resource, h.Config.Reset, result == 1, "")
+		respond(w, r, http.StatusOK, result, h.WriteLog, h.Config.Resource, h.Config.Reset, result == 1, "")
 	}
 }
-func respond(w http.ResponseWriter, r *http.Request, code int, result interface{}, logWriter PasswordActivityLogWriter, resource string, action string, success bool, desc string) {
+func respond(w http.ResponseWriter, r *http.Request, code int, result interface{}, writeLog func(context.Context, string, string, bool, string) error, resource string, action string, success bool, desc string) {
 	response, _ := json.Marshal(result)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(response)
-	if logWriter != nil {
+	if writeLog != nil {
 		newCtx := context.WithValue(r.Context(), "request", r)
-		logWriter.Write(newCtx, resource, action, success, desc)
+		writeLog(newCtx, resource, action, success, desc)
 	}
 }
