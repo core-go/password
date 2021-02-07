@@ -8,9 +8,6 @@ import (
 	"strings"
 )
 
-type ValueDecrypter interface {
-	Decrypt(cipherText string, secretKey string) (string, error)
-}
 type PasswordActionConfig struct {
 	Resource string `mapstructure:"resource"`
 	Change   string `mapstructure:"change"`
@@ -22,11 +19,11 @@ type PasswordHandler struct {
 	Config          PasswordActionConfig
 	LogError        func(context.Context, string)
 	WriteLog        func(ctx context.Context, resource string, action string, success bool, desc string) error
-	Decrypter       ValueDecrypter
+	Decrypt         func(cipherText string, secretKey string) (string, error)
 	EncryptionKey   string
 }
 
-func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error, decrypter ValueDecrypter, encryptionKey string) *PasswordHandler {
+func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error, decrypt func(cipherText string, secretKey string) (string, error), encryptionKey string) *PasswordHandler {
 	var c PasswordActionConfig
 	if conf != nil {
 		c.Resource = conf.Resource
@@ -46,7 +43,7 @@ func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, conf
 	if len(c.Forgot) == 0 {
 		c.Forgot = "forgot"
 	}
-	return &PasswordHandler{PasswordService: authenticationService, Config: c, LogError: logError, WriteLog: writeLog, Decrypter: decrypter, EncryptionKey: encryptionKey}
+	return &PasswordHandler{PasswordService: authenticationService, Config: c, LogError: logError, WriteLog: writeLog, Decrypt: decrypt, EncryptionKey: encryptionKey}
 }
 
 func NewPasswordHandler(authenticationService PasswordService, conf *PasswordActionConfig, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error) *PasswordHandler {
@@ -64,8 +61,8 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Cannot decode PasswordChange model", http.StatusBadRequest)
 		return
 	}
-	if h.Decrypter != nil && len(h.EncryptionKey) > 0 {
-		decodedCurrentPassword, er2 := h.Decrypter.Decrypt(passwordChange.CurrentPassword, h.EncryptionKey)
+	if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
+		decodedCurrentPassword, er2 := h.Decrypt(passwordChange.CurrentPassword, h.EncryptionKey)
 		if er2 != nil {
 			if h.LogError != nil {
 				msg := "cannot decode current password: " + er2.Error()
@@ -74,7 +71,7 @@ func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "cannot decode current password", http.StatusBadRequest)
 			return
 		}
-		decodedNewPassword, er3 := h.Decrypter.Decrypt(passwordChange.Password, h.EncryptionKey)
+		decodedNewPassword, er3 := h.Decrypt(passwordChange.Password, h.EncryptionKey)
 		if er3 != nil {
 			if h.LogError != nil {
 				msg := "cannot decode new password: " + er3.Error()
@@ -138,8 +135,8 @@ func (h *PasswordHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Cannot decode PasswordReset model", http.StatusBadRequest)
 		return
 	}
-	if h.Decrypter != nil && len(h.EncryptionKey) > 0 {
-		decodedNewPassword, er2 := h.Decrypter.Decrypt(passwordReset.Password, h.EncryptionKey)
+	if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
+		decodedNewPassword, er2 := h.Decrypt(passwordReset.Password, h.EncryptionKey)
 		if er2 != nil {
 			if h.LogError != nil {
 				msg := "cannot decode new password: " + er2.Error()
