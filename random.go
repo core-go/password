@@ -19,11 +19,7 @@ func padLeft(str string, length int, pad string) string {
 	return times(pad, length-len(str)) + str
 }
 
-func Generate(length int) string {
+func generate(length int) string {
 	max := int(math.Pow(float64(10), float64(length))) - 1
 	return padLeft(strconv.Itoa(rand.Intn(max)), length, "0")
-}
-
-func GenerateCode() string {
-	return Generate(6)
 }
