@@ -13,20 +13,20 @@ type DefaultPasswordService struct {
 	PasswordRepository       PasswordRepository
 	PasswordResetExpires     int
 	ResetPasscodeRepository  PasscodeRepository
-	ResetPasscodeSender      VerificationCodeSender
-	TokenBlacklistRepository TokenBlacklistRepository
+	SendResetCode            func(ctx context.Context, to string, code string, expireAt time.Time, params interface{}) error
+	RevokeAllTokens          func(id string, reason string) error
 	Regexps                  []regexp.Regexp
 	DuplicateCount           int
-	TwoFactorRepository      TwoFactorsRepository
+	RequireTwoFactors        func(ctx context.Context, id string) (bool, error)
 	PasswordChangeExpires    int
 	ChangePasscodeRepository PasscodeRepository
-	ChangePasscodeSender     VerificationCodeSender
-	Generator                PasscodeGenerator
+	SendChangeCode           func(ctx context.Context, to string, code string, expireAt time.Time, params interface{}) error
+	Generate                 func() string
 }
 
-func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, resetPasscodeSender VerificationCodeSender, blacklistTokenService TokenBlacklistRepository, expressions []string, duplicateCount int, twoFactorService TwoFactorsRepository, passwordChangeExpires int, changePasscodeService PasscodeRepository, changePasscodeSender VerificationCodeSender, generator PasscodeGenerator) *DefaultPasswordService {
-	if twoFactorService != nil && (changePasscodeService == nil || changePasscodeSender == nil || passwordChangeExpires <= 0) {
-		panic(errors.New("when twoFactorService is not nil, changePasscodeService and changePasscodeSender must not be nil, and passwordChangeExpires must be greater than 0"))
+func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, sendResetCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error), passwordChangeExpires int, changePasscodeService PasscodeRepository, sendChangeCode func(context.Context, string, string, time.Time, interface{}) error, options...func()string) *DefaultPasswordService {
+	if requireTwoFactors != nil && (changePasscodeService == nil || sendChangeCode == nil || passwordChangeExpires <= 0) {
+		panic(errors.New("when requireTwoFactors is not nil, changePasscodeService and sendChangeCode must not be nil, and passwordChangeExpires must be greater than 0"))
 	}
 	regExps := make([]regexp.Regexp, 0)
 	if len(expressions) > 0 {
@@ -37,11 +37,15 @@ func NewPasswordService(passwordComparator TextComparator, passwordRepossitory P
 			}
 		}
 	}
-	return &DefaultPasswordService{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, resetPasscodeSender, blacklistTokenService, regExps, duplicateCount, twoFactorService, passwordChangeExpires, changePasscodeService, changePasscodeSender, generator}
+	var generate func() string
+	if len(options) >= 1 {
+
+	}
+	return &DefaultPasswordService{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendResetCode, removeAllTokens, regExps, duplicateCount, requireTwoFactors, passwordChangeExpires, changePasscodeService, sendChangeCode, generate}
 }
 
-func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, resetPasscodeSender VerificationCodeSender, blacklistTokenService TokenBlacklistRepository, expressions []string, duplicateCount int, twoFactorService TwoFactorsRepository) *DefaultPasswordService {
-	return NewPasswordService(passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, resetPasscodeSender, blacklistTokenService, expressions, duplicateCount, twoFactorService, passwordResetExpires, resetPasscodeService, resetPasscodeSender, nil)
+func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, sendCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error)) *DefaultPasswordService {
+	return NewPasswordService(passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendCode, removeAllTokens, expressions, duplicateCount, requireTwoFactors, passwordResetExpires, resetPasscodeService, sendCode, nil)
 }
 
 func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChange PasswordChange) (int32, error) {
@@ -79,16 +83,16 @@ func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChan
 		}
 	}
 
-	if s.TwoFactorRepository != nil {
-		required, er4 := s.TwoFactorRepository.Require(ctx, userId)
+	if s.RequireTwoFactors != nil {
+		required, er4 := s.RequireTwoFactors(ctx, userId)
 		if er4 != nil {
 			return 0, er4
 		}
 		if required {
 			if passwordChange.Step <= 0 {
 				var codeSend string
-				if s.Generator != nil {
-					codeSend = s.Generator.Generate()
+				if s.Generate != nil {
+					codeSend = s.Generate()
 				} else {
 					codeSend = generate(6)
 				}
@@ -100,7 +104,7 @@ func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChan
 				expiredAt := addSeconds(time.Now(), s.PasswordChangeExpires)
 				count, er6 := s.ChangePasscodeRepository.Save(ctx, userId, codeSave, expiredAt)
 				if count > 0 && er6 == nil {
-					er7 := s.ChangePasscodeSender.Send(ctx, username, codeSend, expiredAt, email)
+					er7 := s.SendChangeCode(ctx, username, codeSend, expiredAt, email)
 					return 2, er7
 				}
 			}
@@ -128,8 +132,8 @@ func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChan
 	}
 	count, er7 := s.PasswordRepository.UpdateWithCurrentPassword(ctx, userId, password, newPassword)
 	if count > 0 && er7 == nil {
-		if s.TokenBlacklistRepository != nil {
-			er8 := s.TokenBlacklistRepository.RevokeAllTokens(userId, "The user has changed password.")
+		if s.RevokeAllTokens != nil {
+			er8 := s.RevokeAllTokens(userId, "The user has changed password.")
 			return 1, er8
 		}
 		return 1, er7
@@ -166,8 +170,8 @@ func (s DefaultPasswordService) ForgotPassword(ctx context.Context, emailTo stri
 	}
 
 	var codeSend string
-	if s.Generator != nil {
-		codeSend = s.Generator.Generate()
+	if s.Generate != nil {
+		codeSend = s.Generate()
 	} else {
 		codeSend = generate(6)
 	}
@@ -180,7 +184,7 @@ func (s DefaultPasswordService) ForgotPassword(ctx context.Context, emailTo stri
 	count, er1 := s.ResetPasscodeRepository.Save(ctx, userId, codeSave, expiredAt)
 	if count > 0 && er1 == nil {
 		expiredAt := addSeconds(time.Now(), s.PasswordResetExpires)
-		er2 := s.ResetPasscodeSender.Send(ctx, username, codeSend, expiredAt, email)
+		er2 := s.SendResetCode(ctx, username, codeSend, expiredAt, email)
 		if er2 != nil {
 			return false, er2
 		}
@@ -249,8 +253,8 @@ func (s DefaultPasswordService) ResetPassword(ctx context.Context, passwordReset
 	}
 
 	if count > 0 && er0 == nil {
-		if s.TokenBlacklistRepository != nil {
-			er6 := s.TokenBlacklistRepository.RevokeAllTokens(userId, "The user has reset password.")
+		if s.RevokeAllTokens != nil {
+			er6 := s.RevokeAllTokens(userId, "The user has reset password.")
 			return 1, er6
 		}
 		return 1, er0
