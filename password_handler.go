@@ -23,9 +23,10 @@ type PasswordHandler struct {
 	Log             func(ctx context.Context, resource string, action string, success bool, desc string) error
 }
 
-func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, logError func(context.Context, string), decrypt func(cipherText string, secretKey string) (string, error), encryptionKey string, conf *PasswordActionConfig, options...func(context.Context, string, string, bool, string) error) *PasswordHandler {
+func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, logError func(context.Context, string), decrypt func(cipherText string, secretKey string) (string, error), encryptionKey string, writeLog func(context.Context, string, string, bool, string) error, options...PasswordActionConfig) *PasswordHandler {
 	var c PasswordActionConfig
-	if conf != nil {
+	if len(options) >= 1 {
+		conf := options[0]
 		c.Resource = conf.Resource
 		c.Change = conf.Change
 		c.Reset = conf.Reset
@@ -43,15 +44,19 @@ func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, logE
 	if len(c.Forgot) == 0 {
 		c.Forgot = "forgot"
 	}
+	return &PasswordHandler{PasswordService: authenticationService, Config: c, Error: logError, Log: writeLog, Decrypt: decrypt, EncryptionKey: encryptionKey}
+}
+
+func NewDefaultPasswordHandler(authenticationService PasswordService, logError func(context.Context, string), options...func(context.Context, string, string, bool, string) error) *PasswordHandler {
 	var writeLog func(context.Context, string, string, bool, string) error
 	if len(options) >= 1 {
 		writeLog = options[0]
 	}
-	return &PasswordHandler{PasswordService: authenticationService, Config: c, Error: logError, Log: writeLog, Decrypt: decrypt, EncryptionKey: encryptionKey}
+	return NewPasswordHandlerWithDecrypter(authenticationService, logError, nil, "", writeLog)
 }
 
-func NewPasswordHandler(authenticationService PasswordService, logError func(context.Context, string), conf *PasswordActionConfig, writeLog func(context.Context, string, string, bool, string) error) *PasswordHandler {
-	return NewPasswordHandlerWithDecrypter(authenticationService, logError, nil, "", conf, writeLog)
+func NewPasswordHandler(authenticationService PasswordService, logError func(context.Context, string), writeLog func(context.Context, string, string, bool, string) error, options...PasswordActionConfig) *PasswordHandler {
+	return NewPasswordHandlerWithDecrypter(authenticationService, logError, nil, "", writeLog, options...)
 }
 
 func (h *PasswordHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
