@@ -39,7 +39,7 @@ func NewPasswordService(passwordComparator TextComparator, passwordRepossitory P
 	}
 	var generate func() string
 	if len(options) >= 1 {
-
+		generate = options[0]
 	}
 	return &DefaultPasswordService{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendResetCode, removeAllTokens, regExps, duplicateCount, requireTwoFactors, passwordChangeExpires, changePasscodeService, sendChangeCode, generate}
 }
