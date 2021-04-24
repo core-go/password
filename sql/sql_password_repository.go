@@ -12,19 +12,12 @@ import (
 	p "github.com/common-go/password"
 )
 
-const (
-	DriverPostgres   = "postgres"
-	DriverMysql      = "mysql"
-	DriverMssql      = "mssql"
-	DriverOracle     = "oracle"
-	DriverNotSupport = "no support"
-)
-
 type SqlPasswordRepository struct {
 	Database          *sql.DB
 	UserTableName     string
 	PasswordTableName string
 	HistoryTableName  string
+	Key               string // User Id from context
 	IdName            string
 	PasswordName      string
 	ToAddressName     string
@@ -37,15 +30,15 @@ type SqlPasswordRepository struct {
 	BuildParam        func(int) string
 }
 
-func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, c p.PasswordSchemaConfig) *SqlPasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *SqlPasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, userId, changedTimeName, failCountName string) *SqlPasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
+func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *SqlPasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
-func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *SqlPasswordRepository {
+func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *SqlPasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -61,6 +54,7 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 	build := getBuild(db)
 	return &SqlPasswordRepository{
 		Database:          db,
+		Key:               key,
 		BuildParam:        build,
 		UserTableName:     strings.ToLower(userTableName),
 		PasswordTableName: strings.ToLower(passwordTableName),
@@ -171,7 +165,7 @@ func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPa
 		pass[r.FailCountName] = 0
 	}
 	if len(r.ChangedByName) > 0 {
-		uid := getUserIdFromContext(ctx)
+		uid := getString(ctx, r.Key)
 		if len(uid) > 0 {
 			pass[r.ChangedByName] = uid
 		} else {
@@ -236,7 +230,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 		pass[r.FailCountName] = 0
 	}
 	if len(r.ChangedByName) > 0 {
-		uid := getUserIdFromContext(ctx)
+		uid := getString(ctx, r.Key)
 		if len(uid) > 0 {
 			pass[r.ChangedByName] = uid
 		} else {
@@ -390,43 +384,17 @@ func BuildInsertHistory(tableName string, history map[string]interface{}, buildP
 	return fmt.Sprintf("INSERT INTO %v %v VALUES %v", tableName, column, value), values
 }
 
-func getUserIdFromContext(ctx context.Context) string {
-	token := ctx.Value("authorization")
-	if authorizationToken, ok := token.(map[string]interface{}); ok {
-		userId := getUserId(authorizationToken)
-		return userId
-	}
-	return ""
-}
-
-func getUserId(data map[string]interface{}) string {
-	u := data["userId"]
-	if u != nil {
-		userId, _ := u.(string)
-		return userId
-	} else {
-		u = data["userid"]
+func getString(ctx context.Context, key string) string {
+	if len(key) > 0 {
+		u := ctx.Value(key)
 		if u != nil {
-			userId, _ := u.(string)
-			return userId
-		} else {
-			u = data["uid"]
-			userId, _ := u.(string)
-			return userId
+			s, ok := u.(string)
+			if ok {
+				return s
+			} else {
+				return ""
+			}
 		}
-	}
-	return getUsername(data)
-}
-
-func getUsername(data map[string]interface{}) string {
-	u := data["username"]
-	if u != nil {
-		userName, _ := u.(string)
-		return userName
-	} else {
-		u = data["userName"]
-		userName, _ := u.(string)
-		return userName
 	}
 	return ""
 }
