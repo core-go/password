@@ -1,4 +1,4 @@
-package password
+package sql
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	p "github.com/common-go/password"
 )
 
 const (
@@ -32,18 +34,18 @@ type SqlPasswordRepository struct {
 	ChangedByName     string
 	HistoryName       string
 	TimestampName     string
-	Driver            string
+	BuildParam        func(int) string
 }
 
-func NewSqlPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, c PasswordSchemaConfig) *SqlPasswordRepository {
-	return NewSqlPasswordRepository(db, userTableName, passwordTableName, historyTableName, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, c p.PasswordSchemaConfig) *SqlPasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func NewDefaultSqlPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, userId, changedTimeName, failCountName string) *SqlPasswordRepository {
-	return NewSqlPasswordRepository(db, userTableName, passwordTableName, historyTableName, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
+func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, userId, changedTimeName, failCountName string) *SqlPasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
-func NewSqlPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *SqlPasswordRepository {
+func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *SqlPasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -56,9 +58,10 @@ func NewSqlPasswordRepository(db *sql.DB, userTableName, passwordTableName, hist
 	if len(idName) == 0 {
 		idName = "userid"
 	}
+	build := getBuild(db)
 	return &SqlPasswordRepository{
 		Database:          db,
-		Driver:            GetDriver(db),
+		BuildParam:        build,
 		UserTableName:     strings.ToLower(userTableName),
 		PasswordTableName: strings.ToLower(passwordTableName),
 		HistoryTableName:  strings.ToLower(historyTableName),
@@ -76,7 +79,7 @@ func NewSqlPasswordRepository(db *sql.DB, userTableName, passwordTableName, hist
 
 func (r *SqlPasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	var userId []string
-	query := fmt.Sprintf("select distinct `%s` from %s where %s = %s", r.IdName, r.UserTableName, r.UserName, BuildParam(0, r.Driver))
+	query := fmt.Sprintf("select distinct `%s` from %s where %s = %s", r.IdName, r.UserTableName, r.UserName, r.BuildParam(0))
 	rows, err := r.Database.Query(query, userName)
 	if err != nil {
 		return "", err
@@ -106,15 +109,15 @@ func (r *SqlPasswordRepository) GetUser(ctx context.Context, userNameOrEmail str
 					WHERE us.%s = %s or us.%s = %s`
 	if r.PasswordTableName != r.UserTableName {
 		query = fmt.Sprintf(query1, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.PasswordTableName, r.IdName, r.IdName, r.UserName,
-			BuildParam(0, r.Driver),
+			r.BuildParam(0),
 			r.ToAddressName,
-			BuildParam(1, r.Driver),
+			r.BuildParam(1),
 		)
 	} else {
 		query = fmt.Sprintf(query2, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.UserName,
-			BuildParam(0, r.Driver),
+			r.BuildParam(0),
 			r.ToAddressName,
-			BuildParam(1, r.Driver),
+			r.BuildParam(1),
 		)
 	}
 	rows, err := r.Database.Query(query, userNameOrEmail, userNameOrEmail)
@@ -157,37 +160,6 @@ func (r *SqlPasswordRepository) GetUser(ctx context.Context, userNameOrEmail str
 	return userId, userName, email, password, nil
 }
 
-func (r *SqlPasswordRepository) buildUpsert(model map[string]interface{}, table string, id interface{}, idname string) (string, []interface{}) {
-	colNumber := 0
-	values := []interface{}{}
-	querySet := make([]string, 0)
-	for colName, v2 := range model {
-		values = append(values, v2)
-		querySet = append(querySet, fmt.Sprintf("%v="+BuildParam(colNumber, r.Driver), colName))
-		colNumber++
-	}
-	values = append(values, id)
-	queryWhere := fmt.Sprintf(" %s = %s",
-		idname,
-		BuildParam(colNumber, r.Driver),
-	)
-	query := fmt.Sprintf("update %v set %v where %v", table, strings.Join(querySet, ","), queryWhere)
-	return query, values
-}
-
-func (r *SqlPasswordRepository) buildInsert(model map[string]interface{}, table string) (string, []interface{}) {
-	var cols []string
-	var values []interface{}
-	for columnName, value := range model {
-		cols = append(cols, columnName)
-		values = append(values, value)
-	}
-	column := fmt.Sprintf("(%v)", strings.Join(cols, ","))
-	numCol := len(cols)
-	value := fmt.Sprintf("(%v)", BuildParametersFrom(0, numCol, r.Driver))
-	return fmt.Sprintf("insert into %v %v values %v", table, column, value), values
-}
-
 func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
 	pass[r.IdName] = userId
@@ -208,7 +180,7 @@ func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPa
 	}
 
 	var count int
-	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, BuildParam(0, r.Driver))
+	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(0))
 	rows, err0 := r.Database.Query(query, userId)
 	if err0 != nil {
 		return 0, err0
@@ -225,7 +197,7 @@ func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPa
 		return 0, err1
 	}
 	if count > 0 {
-		query, values := r.buildUpsert(pass, r.PasswordTableName, userId, r.IdName)
+		query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
 		result1, err3 := tx.Exec(query, values...)
 		if err3 != nil {
 			tx.Rollback()
@@ -239,7 +211,7 @@ func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPa
 		return r, err5
 	}
 
-	query1, values1 := r.buildInsert(pass, r.PasswordTableName)
+	query1, values1 := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
 	result2, err3 := tx.Exec(query1, values1...)
 	if err3 != nil {
 		tx.Rollback()
@@ -273,7 +245,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 	}
 
 	var count int
-	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, BuildParam(0, r.Driver))
+	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(0))
 	rows, err0 := r.Database.Query(query, userId)
 	if err0 != nil {
 		return 0, err0
@@ -291,7 +263,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 	}
 	var result1 sql.Result
 	if count > 0 {
-		query, values := r.buildUpsert(pass, r.PasswordTableName, userId, r.IdName)
+		query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
 		result0, err3 := tx.Exec(query, values...)
 		result1 = result0
 		if err3 != nil {
@@ -299,7 +271,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 			return 0, err3
 		}
 	} else {
-		query, values := r.buildInsert(pass, r.PasswordTableName)
+		query, values := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
 		result0, err4 := tx.Exec(query, values...)
 		result1 = result0
 		if err4 != nil {
@@ -312,7 +284,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 	history[r.IdName] = userId
 	history[r.PasswordName] = currentPassword
 	history[r.TimestampName] = time.Now()
-	query, value := r.insertHistory(r.HistoryTableName, history)
+	query, value := BuildInsertHistory(r.HistoryTableName, history, r.BuildParam)
 	result2, err5 := tx.Exec(query, value...)
 	if err5 != nil {
 		tx.Rollback()
@@ -340,7 +312,7 @@ func (r *SqlPasswordRepository) GetHistory(ctx context.Context, userId string, m
 
 	arr := make(map[string]interface{})
 	query := `SELECT %s FROM %s WHERE %s = %s ORDER BY %s desc LIMIT %d OFFSET 1`
-	query = fmt.Sprintf(query, r.PasswordName, r.HistoryTableName, r.IdName,BuildParam(0, r.Driver), r.TimestampName, max)
+	query = fmt.Sprintf(query, r.PasswordName, r.HistoryTableName, r.IdName, r.BuildParam(0), r.TimestampName, max)
 	rows, err := r.Database.Query(query, userId)
 	if err != nil {
 		return history, err
@@ -376,7 +348,36 @@ func (r *SqlPasswordRepository) GetHistory(ctx context.Context, userId string, m
 	return history, nil
 }
 
-func (r *SqlPasswordRepository) insertHistory(tableName string, history map[string]interface{}) (string, []interface{}) {
+func BuildSave(model map[string]interface{}, table string, id interface{}, idname string, buildParam func(int) string) (string, []interface{}) {
+	colNumber := 0
+	var values []interface{}
+	querySet := make([]string, 0)
+	for colName, v2 := range model {
+		values = append(values, v2)
+		querySet = append(querySet, fmt.Sprintf("%v="+buildParam(colNumber), colName))
+		colNumber++
+	}
+	values = append(values, id)
+	queryWhere := fmt.Sprintf(" %s = %s",
+		idname,
+		buildParam(colNumber),
+	)
+	query := fmt.Sprintf("update %v set %v where %v", table, strings.Join(querySet, ","), queryWhere)
+	return query, values
+}
+func BuildInsert(model map[string]interface{}, table string, buildParam func(int) string) (string, []interface{}) {
+	var cols []string
+	var values []interface{}
+	for columnName, value := range model {
+		cols = append(cols, columnName)
+		values = append(values, value)
+	}
+	column := fmt.Sprintf("(%v)", strings.Join(cols, ","))
+	numCol := len(cols)
+	value := fmt.Sprintf("(%v)", buildParametersFrom(0, numCol, buildParam))
+	return fmt.Sprintf("insert into %v %v values %v", table, column, value), values
+}
+func BuildInsertHistory(tableName string, history map[string]interface{}, buildParam func(int) string) (string, []interface{}) {
 	var cols []string
 	var values []interface{}
 	for col, v := range history {
@@ -385,7 +386,7 @@ func (r *SqlPasswordRepository) insertHistory(tableName string, history map[stri
 	}
 	column := fmt.Sprintf("(%v)", strings.Join(cols, ","))
 	numCol := len(cols)
-	value := fmt.Sprintf("(%v)", BuildParametersFrom(0, numCol , r.Driver))
+	value := fmt.Sprintf("(%v)", buildParametersFrom(0, numCol, buildParam))
 	return fmt.Sprintf("INSERT INTO %v %v VALUES %v", tableName, column, value), values
 }
 
@@ -430,40 +431,36 @@ func getUsername(data map[string]interface{}) string {
 	return ""
 }
 
-func BuildParam(index int, driver string) string {
-	switch driver {
-	case DriverPostgres:
-		return "$" + strconv.Itoa(index)
-	case DriverOracle:
-		return ":val" + strconv.Itoa(index)
-	default:
-		return "?"
-	}
-}
-
-func BuildParametersFrom(i int, numCol int, driver string) string {
+func buildParametersFrom(i int, numCol int, buildParam func(int) string) string {
 	var arrValue []string
 	for j := 0; j < numCol; j++ {
-		arrValue = append(arrValue, BuildParam(i+j+1, driver))
+		arrValue = append(arrValue, buildParam(i+j+1))
 	}
 	return strings.Join(arrValue, ",")
 }
 
-func GetDriver(db *sql.DB) string {
-	if db == nil {
-		return DriverNotSupport
-	}
+func buildParam(i int) string {
+	return "?"
+}
+func buildOracleParam(i int) string {
+	return ":val" + strconv.Itoa(i)
+}
+func buildMsSqlParam(i int) string {
+	return "@p" + strconv.Itoa(i)
+}
+func buildDollarParam(i int) string {
+	return "$" + strconv.Itoa(i)
+}
+func getBuild(db *sql.DB) func(i int) string {
 	driver := reflect.TypeOf(db.Driver()).String()
 	switch driver {
 	case "*pq.Driver":
-		return DriverPostgres
-	case "*mysql.MySQLDriver":
-		return DriverMysql
-	case "*mssql.Driver":
-		return DriverMssql
+		return buildDollarParam
 	case "*godror.drv":
-		return DriverOracle
+		return buildOracleParam
+	case "*mssql.Driver":
+		return buildMsSqlParam
 	default:
-		return DriverNotSupport
+		return buildParam
 	}
 }
