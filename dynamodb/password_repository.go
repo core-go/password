@@ -14,7 +14,7 @@ import (
 	p "github.com/common-go/password"
 )
 
-type DynamoDBPasswordRepository struct {
+type PasswordRepository struct {
 	DB                *dynamodb.DynamoDB
 	UserTableName     string
 	PasswordTableName string
@@ -30,7 +30,7 @@ type DynamoDBPasswordRepository struct {
 	TimestampName     string
 }
 
-func NewDynamoDBPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName, key, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *DynamoDBPasswordRepository {
+func NewPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName, key, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -40,7 +40,7 @@ func NewDynamoDBPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, p
 	if len(userName) == 0 {
 		userName = "userName"
 	}
-	return &DynamoDBPasswordRepository{
+	return &PasswordRepository{
 		DB:                dynamoDB,
 		UserTableName:     userTableName,
 		PasswordTableName: passwordTableName,
@@ -57,15 +57,15 @@ func NewDynamoDBPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, p
 	}
 }
 
-func NewDefaultDynamoDBPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName, key, changedTimeName, failCountName string) *DynamoDBPasswordRepository {
-	return NewDynamoDBPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, "password", "email", "userName", changedTimeName, failCountName, "", "history", "timestamp")
+func NewDefaultPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName, key, changedTimeName, failCountName string) *PasswordRepository {
+	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, "password", "email", "userName", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
-func NewDynamoDBPasswordRepositoryByConfig(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *DynamoDBPasswordRepository {
-	return NewDynamoDBPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+func NewPasswordRepositoryByConfig(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
+	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func (r *DynamoDBPasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
+func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	projection := expression.NamesList(expression.Name("_id"))
 	filter := expression.Equal(expression.Name(r.UserName), expression.Value(userName))
 	expr, _ := expression.NewBuilder().WithProjection(projection).WithFilter(filter).Build()
@@ -91,7 +91,7 @@ func (r *DynamoDBPasswordRepository) GetUserId(ctx context.Context, userName str
 	return result["_id"], err
 }
 
-func (r *DynamoDBPasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
+func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
 	projection := expression.NamesList(expression.Name("_id"), expression.Name(r.UserName), expression.Name(r.ToAddressName))
 	userNameFilter := expression.Equal(expression.Name(r.UserName), expression.Value(userNameOrEmail))
 	emailFilter := expression.Equal(expression.Name(r.ToAddressName), expression.Value(userNameOrEmail))
@@ -135,7 +135,7 @@ func (r *DynamoDBPasswordRepository) GetUser(ctx context.Context, userNameOrEmai
 	return userId, userName, email, passResult[r.PasswordName], err
 }
 
-func (r *DynamoDBPasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
+func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
 	pass := make(map[string]*dynamodb.AttributeValue)
 	pass["_id"] = &dynamodb.AttributeValue{S: aws.String(userId)}
 	pass[r.PasswordName] = &dynamodb.AttributeValue{S: aws.String(newPassword)}
@@ -172,7 +172,7 @@ func (r *DynamoDBPasswordRepository) Update(ctx context.Context, userId string, 
 	return int64(aws.Float64Value(output.ConsumedCapacity.CapacityUnits)), nil
 }
 
-func (r *DynamoDBPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
+func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
 	k1, err1 := r.Update(ctx, userId, newPassword)
 	if err1 != nil {
 		return 0, err1
@@ -194,7 +194,7 @@ func (r *DynamoDBPasswordRepository) UpdateWithCurrentPassword(ctx context.Conte
 	return k1 + int64(aws.Float64Value(output.ConsumedCapacity.CapacityUnits)), nil
 }
 
-func (r *DynamoDBPasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
+func (r *PasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
 	history := make([]string, 0)
 	projection := expression.NamesList(expression.Name(r.PasswordName))
 	keyCondition := expression.KeyEqual(expression.Key("_id"), expression.Value(userId))

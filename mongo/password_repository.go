@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-type MongoPasswordRepository struct {
+type PasswordRepository struct {
 	UserCollection     *mongo.Collection
 	PasswordCollection *mongo.Collection
 	HistoryCollection  *mongo.Collection
@@ -27,7 +27,7 @@ type MongoPasswordRepository struct {
 	TimestampName      string
 }
 
-func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordCollectionName, historyCollectionName, key, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *MongoPasswordRepository {
+func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordCollectionName, historyCollectionName, key, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
 	passwordCollection := db.Collection(passwordCollectionName)
 	userCollection := passwordCollection
 	historyCollection := userCollection
@@ -46,7 +46,7 @@ func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordColle
 	if len(userName) == 0 {
 		userName = "userName"
 	}
-	return &MongoPasswordRepository{
+	return &PasswordRepository{
 		UserCollection:     userCollection,
 		PasswordCollection: passwordCollection,
 		HistoryCollection:  historyCollection,
@@ -62,15 +62,15 @@ func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordColle
 	}
 }
 
-func NewDefaultPasswordRepository(db *mongo.Database, userCollection, passwordCollection, historyCollectionName, key, changedTimeName, failCountName string) *MongoPasswordRepository {
+func NewDefaultPasswordRepository(db *mongo.Database, userCollection, passwordCollection, historyCollectionName, key, changedTimeName, failCountName string) *PasswordRepository {
 	return NewPasswordRepository(db, userCollection, passwordCollection, historyCollectionName, key, "password", "email", "userName", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
-func NewPasswordRepositoryByConfig(db *mongo.Database, userCollectionName, passwordCollectionName, historyCollectionName string, key string, c p.PasswordSchemaConfig) *MongoPasswordRepository {
+func NewPasswordRepositoryByConfig(db *mongo.Database, userCollectionName, passwordCollectionName, historyCollectionName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
 	return NewPasswordRepository(db, userCollectionName, passwordCollectionName, historyCollectionName, key, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func (r *MongoPasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
+func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	query := bson.M{r.UserName: userName}
 	x := r.UserCollection.FindOne(ctx, query)
 	er1 := x.Err()
@@ -88,7 +88,7 @@ func (r *MongoPasswordRepository) GetUserId(ctx context.Context, userName string
 	return userId, nil
 }
 
-func (r *MongoPasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
+func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
 	query := bson.M{"$or": []bson.M{{r.UserName: userNameOrEmail}, {r.ToAddressName: userNameOrEmail}}}
 	x := r.UserCollection.FindOne(ctx, query)
 	er1 := x.Err()
@@ -143,7 +143,7 @@ func (r *MongoPasswordRepository) GetUser(ctx context.Context, userNameOrEmail s
 	return userId, userName, email, password, nil
 }
 
-func (r *MongoPasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
+func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
 	pass["_id"] = userId
 	pass[r.PasswordName] = newPassword
@@ -176,7 +176,7 @@ func (r *MongoPasswordRepository) Update(ctx context.Context, userId string, new
 	}
 }
 
-func (r *MongoPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
+func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
 	pass["_id"] = userId
 	pass[r.PasswordName] = newPassword
@@ -212,7 +212,7 @@ func (r *MongoPasswordRepository) UpdateWithCurrentPassword(ctx context.Context,
 	}
 }
 
-func (r *MongoPasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
+func (r *PasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
 	history := make([]string, 0)
 	if ctx.Value(r.HistoryName) != nil {
 		history = ctx.Value(r.HistoryName).([]string)

@@ -12,7 +12,7 @@ import (
 	p "github.com/common-go/password"
 )
 
-type SqlPasswordRepository struct {
+type PasswordRepository struct {
 	Database          *sql.DB
 	UserTableName     string
 	PasswordTableName string
@@ -30,15 +30,15 @@ type SqlPasswordRepository struct {
 	BuildParam        func(int) string
 }
 
-func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *SqlPasswordRepository {
+func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
 	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *SqlPasswordRepository {
+func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *PasswordRepository {
 	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
-func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *SqlPasswordRepository {
+func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -52,7 +52,7 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 		idName = "userid"
 	}
 	build := getBuild(db)
-	return &SqlPasswordRepository{
+	return &PasswordRepository{
 		Database:          db,
 		Key:               key,
 		BuildParam:        build,
@@ -71,7 +71,7 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 	}
 }
 
-func (r *SqlPasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
+func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	var userId []string
 	query := fmt.Sprintf("select distinct `%s` from %s where %s = %s", r.IdName, r.UserTableName, r.UserName, r.BuildParam(0))
 	rows, err := r.Database.Query(query, userName)
@@ -91,7 +91,7 @@ func (r *SqlPasswordRepository) GetUserId(ctx context.Context, userName string) 
 	return userId[0], nil
 }
 
-func (r *SqlPasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
+func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
 	arr := make(map[string]interface{})
 	var query string
 	query1 := `SELECT us.%s, us.%s, us.%s, au.%s
@@ -154,7 +154,7 @@ func (r *SqlPasswordRepository) GetUser(ctx context.Context, userNameOrEmail str
 	return userId, userName, email, password, nil
 }
 
-func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
+func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
 	pass[r.IdName] = userId
 	pass[r.PasswordName] = newPassword
@@ -219,7 +219,7 @@ func (r *SqlPasswordRepository) Update(ctx context.Context, userId string, newPa
 	return r1, err5
 }
 
-func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
+func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
 	pass[r.IdName] = userId
 	pass[r.PasswordName] = newPassword
@@ -301,7 +301,7 @@ func (r *SqlPasswordRepository) UpdateWithCurrentPassword(ctx context.Context, u
 	return r1 + r2, nil
 }
 
-func (r *SqlPasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
+func (r *PasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
 	history := make([]string, 0)
 
 	arr := make(map[string]interface{})
