@@ -9,10 +9,10 @@ import (
 )
 
 type PasswordActionConfig struct {
-	Resource string `mapstructure:"resource"`
-	Change   string `mapstructure:"change"`
-	Reset    string `mapstructure:"reset"`
-	Forgot   string `mapstructure:"forgot"`
+	Resource string `mapstructure:"resource" json:"resource,omitempty" gorm:"column:resource" bson:"resource,omitempty" dynamodbav:"resource,omitempty" firestore:"resource,omitempty"`
+	Change   string `mapstructure:"change" json:"change,omitempty" gorm:"column:change" bson:"change,omitempty" dynamodbav:"change,omitempty" firestore:"change,omitempty"`
+	Reset    string `mapstructure:"reset" json:"reset,omitempty" gorm:"column:reset" bson:"reset,omitempty" dynamodbav:"reset,omitempty" firestore:"reset,omitempty"`
+	Forgot   string `mapstructure:"forgot" json:"forgot,omitempty" gorm:"column:forgot" bson:"forgot,omitempty" dynamodbav:"forgot,omitempty" firestore:"forgot,omitempty"`
 }
 type PasswordHandler struct {
 	PasswordService PasswordService
