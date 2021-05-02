@@ -12,19 +12,19 @@ type DefaultPasswordService struct {
 	PasswordComparator       TextComparator
 	PasswordRepository       PasswordRepository
 	PasswordResetExpires     int
-	ResetPasscodeRepository  PasscodeRepository
+	ResetPasscodeRepository  VerificationCodeRepository
 	SendResetCode            func(ctx context.Context, to string, code string, expireAt time.Time, params interface{}) error
 	RevokeAllTokens          func(id string, reason string) error
 	Regexps                  []regexp.Regexp
 	DuplicateCount           int
 	RequireTwoFactors        func(ctx context.Context, id string) (bool, error)
 	PasswordChangeExpires    int
-	ChangePasscodeRepository PasscodeRepository
+	ChangePasscodeRepository VerificationCodeRepository
 	SendChangeCode           func(ctx context.Context, to string, code string, expireAt time.Time, params interface{}) error
 	Generate                 func() string
 }
 
-func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, sendResetCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error), passwordChangeExpires int, changePasscodeService PasscodeRepository, sendChangeCode func(context.Context, string, string, time.Time, interface{}) error, options...func()string) *DefaultPasswordService {
+func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendResetCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error), passwordChangeExpires int, changePasscodeService VerificationCodeRepository, sendChangeCode func(context.Context, string, string, time.Time, interface{}) error, options ...func() string) *DefaultPasswordService {
 	if requireTwoFactors != nil && (changePasscodeService == nil || sendChangeCode == nil || passwordChangeExpires <= 0) {
 		panic(errors.New("when requireTwoFactors is not nil, changePasscodeService and sendChangeCode must not be nil, and passwordChangeExpires must be greater than 0"))
 	}
@@ -44,7 +44,7 @@ func NewPasswordService(passwordComparator TextComparator, passwordRepossitory P
 	return &DefaultPasswordService{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendResetCode, removeAllTokens, regExps, duplicateCount, requireTwoFactors, passwordChangeExpires, changePasscodeService, sendChangeCode, generate}
 }
 
-func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService PasscodeRepository, sendCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error)) *DefaultPasswordService {
+func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error)) *DefaultPasswordService {
 	return NewPasswordService(passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendCode, removeAllTokens, expressions, duplicateCount, requireTwoFactors, passwordResetExpires, resetPasscodeService, sendCode, nil)
 }
 
@@ -262,7 +262,7 @@ func (s DefaultPasswordService) ResetPassword(ctx context.Context, passwordReset
 	return 0, er0
 }
 
-func deleteCode(ctx context.Context, codeService PasscodeRepository, id string) {
+func deleteCode(ctx context.Context, codeService VerificationCodeRepository, id string) {
 	go func() {
 		ctxDelete, _ := context.WithTimeout(context.Background(), 10*time.Second)
 		_, err := codeService.Delete(ctxDelete, id)
