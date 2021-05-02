@@ -3,7 +3,7 @@ package mongo
 import (
 	"context"
 	"fmt"
-	p "github.com/common-go/password"
+	p "github.com/core-go/password"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/mongo"

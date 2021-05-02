@@ -4,12 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	p "github.com/core-go/password"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	p "github.com/common-go/password"
 )
 
 type PasswordRepository struct {

@@ -3,10 +3,9 @@ package mail
 import (
 	"context"
 	"fmt"
+	"github.com/core-go/mail"
 	"strings"
 	"time"
-
-	"github.com/common-go/mail"
 )
 
 type PasscodeEmailSender struct {

@@ -4,7 +4,7 @@ import (
 	"cloud.google.com/go/firestore"
 	"context"
 	"fmt"
-	p "github.com/common-go/password"
+	p "github.com/core-go/password"
 	"google.golang.org/api/iterator"
 	"strings"
 	"time"

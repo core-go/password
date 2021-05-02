@@ -1,8 +1,8 @@
 package mail
 
 import (
-	"github.com/common-go/mail"
-	"github.com/common-go/password"
+	"github.com/core-go/mail"
+	"github.com/core-go/password"
 )
 
 type PasswordMailConfig struct {

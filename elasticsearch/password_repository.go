@@ -3,15 +3,13 @@ package elasticsearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	p "github.com/core-go/password"
+	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
+	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"time"
-
-	"github.com/elastic/go-elasticsearch"
-	"github.com/elastic/go-elasticsearch/esapi"
-	"github.com/elastic/go-elasticsearch/esutil"
-
-	db "github.com/common-go/elasticsearch"
-	p "github.com/common-go/password"
 )
 
 type PasswordRepository struct {
@@ -56,7 +54,7 @@ func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (st
 		},
 	}
 	res := make(map[string]interface{})
-	ok, err := db.FindOneAndDecode(ctx, r.Client, []string{r.UserIndexName}, query, &res)
+	ok, err := findOneAndDecode(ctx, r.Client, []string{r.UserIndexName}, query, &res)
 	if !ok || err != nil {
 		return "", err
 	}
@@ -76,14 +74,14 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 		},
 	}
 	user := make(map[string]interface{})
-	ok, err := db.FindOneAndDecode(ctx, r.Client, []string{r.UserIndexName}, userQuery, &user)
+	ok, err := findOneAndDecode(ctx, r.Client, []string{r.UserIndexName}, userQuery, &user)
 	if !ok || err != nil {
 		return "", "", "", "", err
 	}
 	userID = user["_id"].(string)
 
 	pass := make(map[string]interface{})
-	ok, err = db.FindOneByIdAndDecode(ctx, r.Client, r.PasswordIndexName, userID, &pass)
+	ok, err = findOneByIdAndDecode(ctx, r.Client, r.PasswordIndexName, userID, &pass)
 	if !ok || err != nil {
 		return "", "", "", "", err
 	}
@@ -155,4 +153,61 @@ func getString(ctx context.Context, key string) string {
 		}
 	}
 	return ""
+}
+func findOneAndDecode(ctx context.Context, client *elasticsearch.Client, index []string, query map[string]interface{}, result interface{}) (bool, error) {
+	req := esapi.SearchRequest{
+		Index:          index,
+		Body:           esutil.NewJSONReader(query),
+		TrackTotalHits: true,
+		Pretty:         true,
+	}
+	res, err := req.Do(ctx, client)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return false, errors.New("response error")
+	} else {
+		var r map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+			return false, err
+		} else {
+			hits := r["hits"].(map[string]interface{})["hits"].([]interface{})
+			total := int(r["hits"].(map[string]interface{})["total"].(map[string]interface{})["value"].(float64))
+			if total >= 1 {
+				if err := json.NewDecoder(esutil.NewJSONReader(hits[0])).Decode(&result); err != nil {
+					return false, err
+				}
+				return true, nil
+			}
+			return false, nil
+		}
+	}
+}
+func findOneByIdAndDecode(ctx context.Context, client *elasticsearch.Client, indexName string, documentID string, result interface{}) (bool, error) {
+	req := esapi.GetRequest{
+		Index:      indexName,
+		DocumentID: documentID,
+	}
+	res, err := req.Do(ctx, client)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return false, errors.New("response error")
+	} else {
+		var r map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+			return false, err
+		} else {
+			if err := json.NewDecoder(esutil.NewJSONReader(r["_source"])).Decode(&result); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
 }

@@ -3,15 +3,14 @@ package dynamodb
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
-	p "github.com/common-go/password"
+	p "github.com/core-go/password"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type PasswordRepository struct {
