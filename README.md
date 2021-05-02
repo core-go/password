@@ -7,7 +7,6 @@
 - PasswordService
 
 ## Installation
-
 Please make sure to initialize a Go module before installing core-go/password:
 
 ```shell
