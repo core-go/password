@@ -55,126 +55,119 @@ func NewPasswordHandler(authenticationService p.PasswordService, logError func(c
 	return NewPasswordHandlerWithDecrypter(authenticationService, logError, nil, "", writeLog, options...)
 }
 
-func (h *PasswordHandler) ChangePassword() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		r := ctx.Request
-		var passwordChange p.PasswordChange
-		er1 := json.NewDecoder(r.Body).Decode(&passwordChange)
-		if er1 != nil {
-			if h.Error != nil {
-				msg := "Cannot decode PasswordChange model: " + er1.Error()
-				h.Error(r.Context(), msg)
-			}
-			ctx.String(http.StatusBadRequest, "Cannot decode PasswordChange model")
-			return
+func (h *PasswordHandler) ChangePassword(ctx *gin.Context) {
+	r := ctx.Request
+	var passwordChange p.PasswordChange
+	er1 := json.NewDecoder(r.Body).Decode(&passwordChange)
+	if er1 != nil {
+		if h.Error != nil {
+			msg := "Cannot decode PasswordChange model: " + er1.Error()
+			h.Error(r.Context(), msg)
 		}
-		if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
-			decodedCurrentPassword, er2 := h.Decrypt(passwordChange.CurrentPassword, h.EncryptionKey)
-			if er2 != nil {
-				if h.Error != nil {
-					msg := "cannot decode current password: " + er2.Error()
-					h.Error(r.Context(), msg)
-				}
-				ctx.String(http.StatusBadRequest, "cannot decode current password")
-				return
-			}
-			decodedNewPassword, er3 := h.Decrypt(passwordChange.Password, h.EncryptionKey)
-			if er3 != nil {
-				if h.Error != nil {
-					msg := "cannot decode new password: " + er3.Error()
-					h.Error(r.Context(), msg)
-				}
-				ctx.String(http.StatusBadRequest, "cannot decode new password")
-				return
-			}
-			passwordChange.CurrentPassword = decodedCurrentPassword
-			passwordChange.Password = decodedNewPassword
-		}
-		result, er4 := h.PasswordService.ChangePassword(r.Context(), passwordChange)
-		if er4 != nil {
-			msg := er4.Error()
-			if h.Error != nil {
-				h.Error(r.Context(), msg)
-			}
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Change, false, msg)
-		} else {
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Change, result > 0, "")
-		}
+		ctx.String(http.StatusBadRequest, "Cannot decode PasswordChange model")
+		return
 	}
-}
-func (h *PasswordHandler) ForgotPassword() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		r := ctx.Request
-		email := ""
-		if r.Method == "GET" {
-			i := strings.LastIndex(r.RequestURI, "/")
-			if i >= 0 {
-				email = r.RequestURI[i+1:]
-			}
-		} else {
-			b, er1 := ioutil.ReadAll(r.Body)
-			if er1 != nil {
-				if h.Error != nil {
-					msg := "Cannot get the body of 'Forgot Password': " + er1.Error()
-					h.Error(r.Context(), msg)
-				}
-				ctx.String(http.StatusBadRequest, "Cannot get the body of 'Forgot Password'")
-				return
-			}
-			email = strings.Trim(string(b), " ")
-		}
-		result, er2 := h.PasswordService.ForgotPassword(r.Context(), email)
+	if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
+		decodedCurrentPassword, er2 := h.Decrypt(passwordChange.CurrentPassword, h.EncryptionKey)
 		if er2 != nil {
-			msg := er2.Error()
 			if h.Error != nil {
+				msg := "cannot decode current password: " + er2.Error()
 				h.Error(r.Context(), msg)
 			}
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Forgot, false, msg)
-		} else {
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Forgot, result, "")
-		}
-	}
-}
-func (h *PasswordHandler) ResetPassword() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		r := ctx.Request
-		var passwordReset p.PasswordReset
-		er1 := json.NewDecoder(r.Body).Decode(&passwordReset)
-		if er1 != nil {
-			if h.Error != nil {
-				msg := "Cannot decode PasswordReset model: " + er1.Error()
-				h.Error(r.Context(), msg)
-			}
-			ctx.String(http.StatusBadRequest, "Cannot decode PasswordReset model")
+			ctx.String(http.StatusBadRequest, "cannot decode current password")
 			return
 		}
-		if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
-			decodedNewPassword, er2 := h.Decrypt(passwordReset.Password, h.EncryptionKey)
-			if er2 != nil {
-				if h.Error != nil {
-					msg := "cannot decode new password: " + er2.Error()
-					h.Error(r.Context(), msg)
-				}
-				ctx.String(http.StatusBadRequest, "cannot decode new password")
-				return
-			}
-			passwordReset.Password = decodedNewPassword
-		}
-		result, er3 := h.PasswordService.ResetPassword(r.Context(), passwordReset)
+		decodedNewPassword, er3 := h.Decrypt(passwordChange.Password, h.EncryptionKey)
 		if er3 != nil {
-			msg := er3.Error()
 			if h.Error != nil {
+				msg := "cannot decode new password: " + er3.Error()
 				h.Error(r.Context(), msg)
 			}
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Reset, false, msg)
-		} else {
-			respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Reset, result == 1, "")
+			ctx.String(http.StatusBadRequest, "cannot decode new password")
+			return
 		}
+		passwordChange.CurrentPassword = decodedCurrentPassword
+		passwordChange.Password = decodedNewPassword
+	}
+	result, er4 := h.PasswordService.ChangePassword(r.Context(), passwordChange)
+	if er4 != nil {
+		msg := er4.Error()
+		if h.Error != nil {
+			h.Error(r.Context(), msg)
+		}
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Change, false, msg)
+	} else {
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Change, result > 0, "")
+	}
+}
+func (h *PasswordHandler) ForgotPassword(ctx *gin.Context) {
+	r := ctx.Request
+	email := ""
+	if r.Method == "GET" {
+		i := strings.LastIndex(r.RequestURI, "/")
+		if i >= 0 {
+			email = r.RequestURI[i+1:]
+		}
+	} else {
+		b, er1 := ioutil.ReadAll(r.Body)
+		if er1 != nil {
+			if h.Error != nil {
+				msg := "Cannot get the body of 'Forgot Password': " + er1.Error()
+				h.Error(r.Context(), msg)
+			}
+			ctx.String(http.StatusBadRequest, "Cannot get the body of 'Forgot Password'")
+			return
+		}
+		email = strings.Trim(string(b), " ")
+	}
+	result, er2 := h.PasswordService.ForgotPassword(r.Context(), email)
+	if er2 != nil {
+		msg := er2.Error()
+		if h.Error != nil {
+			h.Error(r.Context(), msg)
+		}
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Forgot, false, msg)
+	} else {
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Forgot, result, "")
+	}
+}
+func (h *PasswordHandler) ResetPassword(ctx *gin.Context) {
+	r := ctx.Request
+	var passwordReset p.PasswordReset
+	er1 := json.NewDecoder(r.Body).Decode(&passwordReset)
+	if er1 != nil {
+		if h.Error != nil {
+			msg := "Cannot decode PasswordReset model: " + er1.Error()
+			h.Error(r.Context(), msg)
+		}
+		ctx.String(http.StatusBadRequest, "Cannot decode PasswordReset model")
+		return
+	}
+	if h.Decrypt != nil && len(h.EncryptionKey) > 0 {
+		decodedNewPassword, er2 := h.Decrypt(passwordReset.Password, h.EncryptionKey)
+		if er2 != nil {
+			if h.Error != nil {
+				msg := "cannot decode new password: " + er2.Error()
+				h.Error(r.Context(), msg)
+			}
+			ctx.String(http.StatusBadRequest, "cannot decode new password")
+			return
+		}
+		passwordReset.Password = decodedNewPassword
+	}
+	result, er3 := h.PasswordService.ResetPassword(r.Context(), passwordReset)
+	if er3 != nil {
+		msg := er3.Error()
+		if h.Error != nil {
+			h.Error(r.Context(), msg)
+		}
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Reset, false, msg)
+	} else {
+		respond(ctx, http.StatusOK, result, h.Log, h.Config.Resource, h.Config.Reset, result == 1, "")
 	}
 }
 func respond(ctx *gin.Context, code int, result interface{}, writeLog func(context.Context, string, string, bool, string) error, resource string, action string, success bool, desc string) {
-	response, _ := json.Marshal(result)
-	ctx.JSON(code, response)
+	ctx.JSON(code, result)
 	if writeLog != nil {
 		writeLog(ctx.Request.Context(), resource, action, success, desc)
 	}
