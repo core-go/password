@@ -3,7 +3,6 @@ package cassandra
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -217,7 +216,6 @@ func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, user
 	history[r.TimestampName] = time.Now().Format("2006-01-02 15:04:05")
 	if r.HistoryTableName == r.PasswordTableName {
 		queryHistoryTable := fmt.Sprintf("UPDATE %s SET %s = '%s' , %s = %s + [('%s', '%s')] WHERE %s = ?", r.HistoryTableName, r.PasswordName, newPassword, r.HistoryName, r.HistoryName, history[r.PasswordName], history[r.TimestampName], r.IdName)
-		log.Println("currentPassword", queryHistoryTable)
 		result2 := session.Query(queryHistoryTable, userId)
 		if result2.Exec() != nil {
 			return 0, result2.Exec()
