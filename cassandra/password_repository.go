@@ -13,7 +13,7 @@ import (
 )
 
 type PasswordRepository struct {
-	Cassandra         *gocql.ClusterConfig
+	Session           *gocql.Session
 	UserTableName     string
 	PasswordTableName string
 	HistoryTableName  string
@@ -30,7 +30,7 @@ type PasswordRepository struct {
 	BuildParam        func(int) string
 }
 
-func NewPasswordRepository(db *gocql.ClusterConfig, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
+func NewPasswordRepository(session *gocql.Session, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -44,7 +44,7 @@ func NewPasswordRepository(db *gocql.ClusterConfig, userTableName, passwordTable
 		idName = "userid"
 	}
 	return &PasswordRepository{
-		Cassandra:         db,
+		Session:           session,
 		Key:               key,
 		UserTableName:     strings.ToLower(userTableName),
 		PasswordTableName: strings.ToLower(passwordTableName),
@@ -61,21 +61,18 @@ func NewPasswordRepository(db *gocql.ClusterConfig, userTableName, passwordTable
 	}
 }
 
-func NewPasswordRepositoryByConfig(db *gocql.ClusterConfig, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+func NewPasswordRepositoryByConfig(session *gocql.Session, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
+	return NewPasswordRepository(session, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
-func NewDefaultPasswordRepository(db *gocql.ClusterConfig, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *PasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
+func NewDefaultPasswordRepository(session *gocql.Session, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *PasswordRepository {
+	return NewPasswordRepository(session, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	var userId string
-	session, er0 := r.Cassandra.CreateSession()
-	if er0 != nil {
-		return "", er0
-	}
 	query := fmt.Sprintf("select %s from %s where %s = ? ALLOW FILTERING", r.IdName, r.UserTableName, r.UserName)
+	session := r.Session
 	rows := session.Query(query, userName)
 	for _, _ = range rows.Iter().Columns() {
 		row := make(map[string]interface{})
@@ -91,14 +88,9 @@ func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (st
 }
 
 func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
-	log.Println("Password Repository GetUser")
-	session, er0 := r.Cassandra.CreateSession()
-	if er0 != nil {
-		return "", "", "", "", er0
-	}
 	query1 := `SELECT * FROM %s WHERE %s = ? ALLOW FILTERING`
 	queryUserName := fmt.Sprintf(query1, r.UserTableName, r.UserName)
-	rowsUserName := session.Query(queryUserName, userNameOrEmail).Iter()
+	rowsUserName := r.Session.Query(queryUserName, userNameOrEmail).Iter()
 	var userId string
 	var userName string
 	var email string
@@ -125,7 +117,7 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 	}
 
 	queryEmail := fmt.Sprintf(query1, r.UserTableName, r.ToAddressName)
-	rowsEmail := session.Query(queryEmail, userNameOrEmail).Iter()
+	rowsEmail := r.Session.Query(queryEmail, userNameOrEmail).Iter()
 	for {
 		// New map each iteration
 		row1 := make(map[string]interface{})
@@ -149,20 +141,17 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 	if password == "" {
 		query2 := `SELECT %s FROM %s WHERE %s = ? ALLOW FILTERING`
 		queryPassword := fmt.Sprintf(query2, r.PasswordName, r.PasswordTableName, r.IdName)
-		err2 := session.Query(queryPassword, userId).Scan(&password)
+		err2 := r.Session.Query(queryPassword, userId).Scan(&password)
 		if err2 != nil {
 			return "", "", "", "", err2
 		}
 	}
-	defer session.Close()
+	defer r.Session.Close()
 	return userId, userName, email, password, nil
 }
 
 func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassword string) (int64, error) {
-	session, er0 := r.Cassandra.CreateSession()
-	if er0 != nil {
-		return 0, er0
-	}
+	session := r.Session
 	pass := make(map[string]interface{})
 	pass[r.IdName] = userId
 	pass[r.PasswordName] = newPassword
@@ -204,10 +193,7 @@ func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassw
 }
 
 func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
-	session, er0 := r.Cassandra.CreateSession()
-	if er0 != nil {
-		return 0, er0
-	}
+	session := r.Session
 	pass := make(map[string]interface{})
 	pass[r.IdName] = userId
 	pass[r.PasswordName] = newPassword
@@ -263,10 +249,7 @@ func (r *PasswordRepository) GetHistory(ctx context.Context, userId string, max 
 	history := make([]string, 0)
 
 	// arr := make(map[string]interface{})
-	session, er0 := r.Cassandra.CreateSession()
-	if er0 != nil {
-		return history, er0
-	}
+	session := r.Session
 	query := `SELECT %s FROM %s WHERE %s = %s`
 	query = fmt.Sprintf(query, r.HistoryName, r.HistoryTableName, r.IdName, "?")
 	rows := session.Query(query, userId)
