@@ -3,7 +3,7 @@ package password
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	//"io/ioutil"
 	"net/http"
 	"strings"
 )
@@ -13,6 +13,7 @@ type PasswordActionConfig struct {
 	Change   string `mapstructure:"change" json:"change,omitempty" gorm:"column:change" bson:"change,omitempty" dynamodbav:"change,omitempty" firestore:"change,omitempty"`
 	Reset    string `mapstructure:"reset" json:"reset,omitempty" gorm:"column:reset" bson:"reset,omitempty" dynamodbav:"reset,omitempty" firestore:"reset,omitempty"`
 	Forgot   string `mapstructure:"forgot" json:"forgot,omitempty" gorm:"column:forgot" bson:"forgot,omitempty" dynamodbav:"forgot,omitempty" firestore:"forgot,omitempty"`
+	Contact  string `mapstructure:"contact" json:"contact,omitempty" gorm:"column:contact" bson:"contact,omitempty" dynamodbav:"contact,omitempty" firestore:"contact,omitempty"`
 }
 type PasswordHandler struct {
 	PasswordService PasswordService
@@ -42,6 +43,9 @@ func NewPasswordHandlerWithDecrypter(authenticationService PasswordService, logE
 	}
 	if len(c.Forgot) == 0 {
 		c.Forgot = "forgot"
+	}
+	if len(c.Contact) == 0 {
+		c.Forgot = "contact"
 	}
 	return &PasswordHandler{PasswordService: authenticationService, Config: c, Error: logError, Log: writeLog, Decrypt: decrypt}
 }
@@ -110,7 +114,11 @@ func (h *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request)
 			email = r.RequestURI[i+1:]
 		}
 	} else {
-		b, er1 := ioutil.ReadAll(r.Body)
+		structMail := make(map[string]string)
+		structMail[h.Config.Contact] = ""
+		er1 := json.NewDecoder(r.Body).Decode(&structMail)
+		email = structMail["contact"]
+		//b, er1 := ioutil.ReadAll(r.Body)
 		if er1 != nil {
 			if h.Error != nil {
 				msg := "Cannot get the body of 'Forgot Password': " + er1.Error()
@@ -119,7 +127,7 @@ func (h *PasswordHandler) ForgotPassword(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "Cannot get the body of 'Forgot Password'", http.StatusBadRequest)
 			return
 		}
-		email = strings.Trim(string(b), " ")
+		//email = strings.Trim(string(b), " ")
 	}
 	result, er2 := h.PasswordService.ForgotPassword(r.Context(), email)
 	if er2 != nil {

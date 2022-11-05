@@ -3,12 +3,14 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
-	p "github.com/core-go/password"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	p "github.com/core-go/password"
 )
 
 type PasswordRepository struct {
@@ -26,18 +28,32 @@ type PasswordRepository struct {
 	ChangedByName     string
 	HistoryName       string
 	TimestampName     string
+	Max               int
 	BuildParam        func(int) string
+	ToArray           func(interface{}) interface {
+		driver.Valuer
+		sql.Scanner
+	}
 }
 
-func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig, max int, toArray func(interface{}) interface {
+	driver.Valuer
+	sql.Scanner
+}) *PasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp, max, toArray)
 }
 
-func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *PasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
+func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string, max int, toArray func(interface{}) interface {
+	driver.Valuer
+	sql.Scanner
+}) *PasswordRepository {
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, userId, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp", max, toArray)
 }
 
-func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string) *PasswordRepository {
+func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, idName, passwordName, toAddress, userName, changedTimeName, failCountName, changedByName, historyName, timestampName string, max int, toArray func(interface{}) interface {
+	driver.Valuer
+	sql.Scanner
+}) *PasswordRepository {
 	if len(passwordName) == 0 {
 		passwordName = "password"
 	}
@@ -67,6 +83,8 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 		ChangedByName:     strings.ToLower(changedByName),
 		HistoryName:       strings.ToLower(historyName),
 		TimestampName:     strings.ToLower(timestampName),
+		Max:               max,
+		ToArray:           toArray,
 	}
 }
 
@@ -102,15 +120,15 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 					WHERE us.%s = %s or us.%s = %s`
 	if r.PasswordTableName != r.UserTableName {
 		query = fmt.Sprintf(query1, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.PasswordTableName, r.IdName, r.IdName, r.UserName,
-			r.BuildParam(0),
-			r.ToAddressName,
 			r.BuildParam(1),
+			r.ToAddressName,
+			r.BuildParam(2),
 		)
 	} else {
 		query = fmt.Sprintf(query2, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.UserName,
-			r.BuildParam(0),
-			r.ToAddressName,
 			r.BuildParam(1),
+			r.ToAddressName,
+			r.BuildParam(2),
 		)
 	}
 	rows, err := r.Database.Query(query, userNameOrEmail, userNameOrEmail)
@@ -145,11 +163,27 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 	if len(arr) == 0 {
 		return "", "", "", "", nil
 	}
-
-	userId := string(arr[r.IdName].([]byte))
-	userName := string(arr[r.UserName].([]byte))
-	email := string(arr[r.ToAddressName].([]byte))
-	password := string(arr[r.PasswordName].([]byte))
+	var userId, userName, email, password string
+	if _, ok := arr[r.IdName].([]byte); ok {
+		userId = string(arr[r.IdName].([]byte))
+	} else if _, ok := arr[r.IdName].(string); ok {
+		userId = arr[r.IdName].(string)
+	}
+	if _, ok := arr[r.UserName].([]byte); ok {
+		userName = string(arr[r.UserName].([]byte))
+	} else if _, ok := arr[r.UserName].(string); ok {
+		userName = arr[r.UserName].(string)
+	}
+	if _, ok := arr[r.ToAddressName].([]byte); ok {
+		email = string(arr[r.ToAddressName].([]byte))
+	} else if _, ok := arr[r.ToAddressName].(string); ok {
+		email = arr[r.ToAddressName].(string)
+	}
+	if _, ok := arr[r.PasswordName].([]byte); ok {
+		password = string(arr[r.PasswordName].([]byte))
+	} else if _, ok := arr[r.PasswordName].(string); ok {
+		password = arr[r.PasswordName].(string)
+	}
 	return userId, userName, email, password, nil
 }
 
@@ -173,7 +207,7 @@ func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassw
 	}
 
 	var count int
-	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(0))
+	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(1))
 	rows, err0 := r.Database.Query(query, userId)
 	if err0 != nil {
 		return 0, err0
@@ -220,7 +254,6 @@ func (r *PasswordRepository) Update(ctx context.Context, userId string, newPassw
 
 func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, userId string, currentPassword, newPassword string) (int64, error) {
 	pass := make(map[string]interface{})
-	pass[r.IdName] = userId
 	pass[r.PasswordName] = newPassword
 	if len(r.ChangedTimeName) > 0 {
 		pass[r.ChangedTimeName] = time.Now()
@@ -236,9 +269,8 @@ func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, user
 			pass[r.ChangedByName] = userId
 		}
 	}
-
 	var count int
-	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(0))
+	query := fmt.Sprintf("select count(*) from %s where %s = %s", r.PasswordTableName, r.IdName, r.BuildParam(1))
 	rows, err0 := r.Database.Query(query, userId)
 	if err0 != nil {
 		return 0, err0
@@ -250,99 +282,212 @@ func (r *PasswordRepository) UpdateWithCurrentPassword(ctx context.Context, user
 		}
 		break
 	}
-	tx, err1 := r.Database.Begin()
-	if err1 != nil {
-		return 0, err1
-	}
-	var result1 sql.Result
-	if count > 0 {
-		query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
-		result0, err3 := tx.Exec(query, values...)
-		result1 = result0
-		if err3 != nil {
-			tx.Rollback()
-			return 0, err3
+	if len(r.HistoryTableName) > 0 {
+		history := make(map[string]interface{})
+		if r.ToArray != nil {
+			query = fmt.Sprintf("select %s from %s where %s = %s", r.HistoryName, r.HistoryTableName, r.IdName, r.BuildParam(1))
+			rows, err0 = r.Database.Query(query, userId)
+			if err0 != nil {
+				return 0, err0
+			}
+			defer rows.Close()
+			historyPass := make([]string, r.Max)
+			for rows.Next() {
+				if err0 = rows.Scan(r.ToArray(&historyPass)); err0 != nil {
+					return 0, err0
+				}
+			}
+			var end int
+			if len(historyPass) == r.Max {
+				end = len(historyPass) - 1
+			} else {
+				end = len(historyPass)
+			}
+			historyPass = append([]string{newPassword}, historyPass[0:end]...)
+			if r.HistoryTableName == r.PasswordTableName {
+				pass[r.HistoryName] = r.ToArray(historyPass)
+			} else {
+				history[r.IdName] = userId
+				history[r.HistoryName] = r.ToArray(historyPass)
+			}
+		} else {
+			if r.HistoryTableName == r.PasswordTableName {
+				if len(r.HistoryName) > 0 {
+					pass[r.HistoryName] = currentPassword
+				}
+				if len(r.HistoryName) > 0 {
+					pass[r.HistoryName] = currentPassword
+				}
+			} else {
+				history[r.IdName] = userId
+				if len(r.HistoryName) > 0 {
+					history[r.HistoryName] = currentPassword
+				}
+				if len(r.HistoryName) > 0 {
+					history[r.HistoryName] = currentPassword
+				}
+			}
+		}
+		var result1 sql.Result
+		if r.HistoryTableName == r.PasswordTableName {
+			if count > 0 {
+				query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
+				result1, err0 = r.Database.Exec(query, values...)
+				if err0 != nil {
+					return 0, err0
+				}
+			} else {
+				query, values := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
+				result1, err0 = r.Database.Exec(query, values...)
+				if err0 != nil {
+					return 0, err0
+				}
+			}
+			r1, err0 := result1.RowsAffected()
+			if err0 != nil {
+				return 0, err0
+			}
+			return r1, nil
+		} else {
+			tx, err1 := r.Database.Begin()
+			if err1 != nil {
+				return 0, err1
+			}
+			if count > 0 {
+				query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
+				result1, err0 = tx.Exec(query, values...)
+				if err0 != nil {
+					tx.Rollback()
+					return 0, err0
+				}
+			} else {
+				query, values := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
+				result1, err0 = tx.Exec(query, values...)
+				if err0 != nil {
+					tx.Rollback()
+					return 0, err0
+				}
+			}
+			var result2 sql.Result
+			if len(history) <= 0 {
+				query, value := BuildInsertHistory(r.HistoryTableName, history, r.BuildParam)
+				result2, err0 = tx.Exec(query, value...)
+				if err0 != nil {
+					tx.Rollback()
+					return 0, err0
+				}
+			} else {
+				query, value := BuildSave(history, r.HistoryTableName, userId, r.IdName, r.BuildParam)
+				result2, err0 = tx.Exec(query, value...)
+				if err0 != nil {
+					tx.Rollback()
+					return 0, err0
+				}
+			}
+			if err6 := tx.Commit(); err6 != nil {
+				tx.Rollback()
+				return 0, err6
+			}
+			r1, err7 := result1.RowsAffected()
+			if err7 != nil {
+				tx.Rollback()
+				return 0, err7
+			}
+			r2, err8 := result2.RowsAffected()
+			if err8 != nil {
+				tx.Rollback()
+				return 0, err8
+			}
+			return r1 + r2, nil
 		}
 	} else {
-		query, values := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
-		result0, err4 := tx.Exec(query, values...)
-		result1 = result0
-		if err4 != nil {
-			tx.Rollback()
-			return 0, err4
+		if count > 0 {
+			query, values := BuildSave(pass, r.PasswordTableName, userId, r.IdName, r.BuildParam)
+			result0, err3 := r.Database.Exec(query, values...)
+			if err3 != nil {
+				return 0, err3
+			}
+			r1, err := result0.RowsAffected()
+			if err != nil {
+				return 0, err
+			}
+			return r1, nil
+		} else {
+			query, values := BuildInsert(pass, r.PasswordTableName, r.BuildParam)
+			result0, err := r.Database.Exec(query, values...)
+			if err != nil {
+				return 0, err
+			}
+			r1, err := result0.RowsAffected()
+			if err != nil {
+				return 0, err
+			}
+			return r1, nil
 		}
 	}
-
-	history := make(map[string]interface{})
-	history[r.IdName] = userId
-	history[r.PasswordName] = currentPassword
-	history[r.TimestampName] = time.Now()
-	query, value := BuildInsertHistory(r.HistoryTableName, history, r.BuildParam)
-	result2, err5 := tx.Exec(query, value...)
-	if err5 != nil {
-		tx.Rollback()
-		return 0, err5
-	}
-	if err6 := tx.Commit(); err6 != nil {
-		tx.Rollback()
-		return 0, err6
-	}
-	r1, err7 := result1.RowsAffected()
-	if err7 != nil {
-		tx.Rollback()
-		return 0, err7
-	}
-	r2, err8 := result2.RowsAffected()
-	if err7 != nil {
-		tx.Rollback()
-		return 0, err8
-	}
-	return r1 + r2, nil
 }
 
 func (r *PasswordRepository) GetHistory(ctx context.Context, userId string, max int) ([]string, error) {
-	history := make([]string, 0)
+	if len(r.HistoryTableName) > 0 {
+		history := make([]string, max)
+		arr := make(map[string]interface{})
+		query := ""
+		if len(r.TimestampName) > 0 && r.ToArray == nil {
+			query = `SELECT %s FROM %s WHERE %s = %s ORDER BY %s desc LIMIT %d OFFSET 1`
+			query = fmt.Sprintf(query, r.HistoryName, r.HistoryTableName, r.IdName, r.BuildParam(1), r.TimestampName, max)
+		} else {
+			query = `SELECT %s FROM %s WHERE %s = %s`
+			query = fmt.Sprintf(query, r.HistoryName, r.HistoryTableName, r.IdName, r.BuildParam(1))
+		}
+		rows, err := r.Database.Query(query, userId)
+		if err != nil {
+			return history, err
+		}
+		//dont forget to close
+		defer rows.Close()
+		cols, _ := rows.Columns()
+		for rows.Next() {
+			if r.ToArray != nil {
+				if err1 := rows.Scan(r.ToArray(&history)); err1 != nil {
+					return history, err1
+				}
+				for len(history) > r.Max {
+					history = history[1:]
+				}
+			} else {
+				columns := make([]interface{}, len(cols))
+				columnPointers := make([]interface{}, len(cols))
+				for i, _ := range columns {
+					columnPointers[i] = &columns[i]
+				}
 
-	arr := make(map[string]interface{})
-	query := `SELECT %s FROM %s WHERE %s = %s ORDER BY %s desc LIMIT %d OFFSET 1`
-	query = fmt.Sprintf(query, r.PasswordName, r.HistoryTableName, r.IdName, r.BuildParam(0), r.TimestampName, max)
-	rows, err := r.Database.Query(query, userId)
-	if err != nil {
-		return history, err
+				if err1 := rows.Scan(columnPointers...); err1 != nil {
+					return history, err1
+				}
+
+				for i, colName := range cols {
+					val := columnPointers[i].(*interface{})
+					arr[colName] = *val
+				}
+
+				if rows.Err() != nil {
+					return history, rows.Err()
+				}
+
+				if len(arr) == 0 {
+					return history, nil
+				}
+				history = append(history, string(arr[r.PasswordName].([]byte)))
+			}
+		}
+		return history, nil
+	} else {
+		return []string{}, nil
 	}
-	//dont forget to close
-	defer rows.Close()
-	cols, _ := rows.Columns()
-	for rows.Next() {
-		columns := make([]interface{}, len(cols))
-		columnPointers := make([]interface{}, len(cols))
-		for i, _ := range columns {
-			columnPointers[i] = &columns[i]
-		}
-
-		if err1 := rows.Scan(columnPointers...); err1 != nil {
-			return history, err1
-		}
-
-		for i, colName := range cols {
-			val := columnPointers[i].(*interface{})
-			arr[colName] = *val
-		}
-
-		if rows.Err() != nil {
-			return history, rows.Err()
-		}
-
-		if len(arr) == 0 {
-			return history, nil
-		}
-		history = append(history, string(arr[r.PasswordName].([]byte)))
-	}
-	return history, nil
 }
 
 func BuildSave(model map[string]interface{}, table string, id interface{}, idname string, buildParam func(int) string) (string, []interface{}) {
-	colNumber := 0
+	colNumber := 1
 	var values []interface{}
 	querySet := make([]string, 0)
 	for colName, v2 := range model {
