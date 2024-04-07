@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-type DefaultPasswordService struct {
+type PasswordUseCase struct {
 	PasswordComparator       TextComparator
 	PasswordRepository       PasswordRepository
 	PasswordResetExpires     int
 	ResetPasscodeRepository  VerificationCodeRepository
 	SendResetCode            func(ctx context.Context, to string, code string, expireAt time.Time, params interface{}) error
-	RevokeAllTokens          func(id string, reason string) error
+	RevokeAllTokens          func(ctx context.Context, id string, reason string) error
 	Regexps                  []regexp.Regexp
 	DuplicateCount           int
 	RequireTwoFactors        func(ctx context.Context, id string) (bool, error)
@@ -24,7 +24,7 @@ type DefaultPasswordService struct {
 	Generate                 func() string
 }
 
-func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendResetCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error), passwordChangeExpires int, changePasscodeService VerificationCodeRepository, sendChangeCode func(context.Context, string, string, time.Time, interface{}) error, options ...func() string) *DefaultPasswordService {
+func NewPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendResetCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(context.Context, string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error), passwordChangeExpires int, changePasscodeService VerificationCodeRepository, sendChangeCode func(context.Context, string, string, time.Time, interface{}) error, options ...func() string) *PasswordUseCase {
 	if requireTwoFactors != nil && (changePasscodeService == nil || sendChangeCode == nil || passwordChangeExpires <= 0) {
 		panic(errors.New("when requireTwoFactors is not nil, changePasscodeService and sendChangeCode must not be nil, and passwordChangeExpires must be greater than 0"))
 	}
@@ -41,14 +41,14 @@ func NewPasswordService(passwordComparator TextComparator, passwordRepossitory P
 	if len(options) >= 1 {
 		generate = options[0]
 	}
-	return &DefaultPasswordService{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendResetCode, removeAllTokens, regExps, duplicateCount, requireTwoFactors, passwordChangeExpires, changePasscodeService, sendChangeCode, generate}
+	return &PasswordUseCase{passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendResetCode, removeAllTokens, regExps, duplicateCount, requireTwoFactors, passwordChangeExpires, changePasscodeService, sendChangeCode, generate}
 }
 
-func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error)) *DefaultPasswordService {
+func NewDefaultPasswordService(passwordComparator TextComparator, passwordRepossitory PasswordRepository, passwordResetExpires int, resetPasscodeService VerificationCodeRepository, sendCode func(context.Context, string, string, time.Time, interface{}) error, removeAllTokens func(context.Context, string, string) error, expressions []string, duplicateCount int, requireTwoFactors func(ctx context.Context, id string) (bool, error)) *PasswordUseCase {
 	return NewPasswordService(passwordComparator, passwordRepossitory, passwordResetExpires, resetPasscodeService, sendCode, removeAllTokens, expressions, duplicateCount, requireTwoFactors, passwordResetExpires, resetPasscodeService, sendCode, nil)
 }
 
-func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChange PasswordChange) (int32, error) {
+func (s PasswordUseCase) ChangePassword(ctx context.Context, passwordChange PasswordChange) (int32, error) {
 	if len(s.Regexps) > 0 {
 		for _, exp := range s.Regexps {
 			if !exp.MatchString(passwordChange.Password) {
@@ -133,7 +133,7 @@ func (s DefaultPasswordService) ChangePassword(ctx context.Context, passwordChan
 	count, er7 := s.PasswordRepository.UpdateWithCurrentPassword(ctx, userId, password, newPassword)
 	if count > 0 && er7 == nil {
 		if s.RevokeAllTokens != nil {
-			er8 := s.RevokeAllTokens(userId, "The user has changed password.")
+			er8 := s.RevokeAllTokens(ctx, userId, "The user has changed password.")
 			return 1, er8
 		}
 		return 1, er7
@@ -163,7 +163,7 @@ func min(n1, n2 int) int {
 	return n2
 }
 
-func (s DefaultPasswordService) ForgotPassword(ctx context.Context, emailTo string) (bool, error) {
+func (s PasswordUseCase) ForgotPassword(ctx context.Context, emailTo string) (bool, error) {
 	userId, username, email, _, er1 := s.PasswordRepository.GetUser(ctx, emailTo)
 	if len(userId) == 0 || er1 != nil {
 		return false, er1
@@ -193,7 +193,7 @@ func (s DefaultPasswordService) ForgotPassword(ctx context.Context, emailTo stri
 	return false, er1
 }
 
-func (s DefaultPasswordService) ResetPassword(ctx context.Context, passwordReset PasswordReset) (int32, error) {
+func (s PasswordUseCase) ResetPassword(ctx context.Context, passwordReset PasswordReset) (int32, error) {
 	if len(s.Regexps) > 0 {
 		for _, exp := range s.Regexps {
 			if !exp.MatchString(passwordReset.Password) {
@@ -254,7 +254,7 @@ func (s DefaultPasswordService) ResetPassword(ctx context.Context, passwordReset
 
 	if count > 0 && er0 == nil {
 		if s.RevokeAllTokens != nil {
-			er6 := s.RevokeAllTokens(userId, "The user has reset password.")
+			er6 := s.RevokeAllTokens(ctx, userId, "The user has reset password.")
 			return 1, er6
 		}
 		return 1, er0
