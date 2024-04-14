@@ -2,7 +2,7 @@ package password
 
 type PasswordSchemaConfig struct {
 	UserId      string `mapstructure:"user_id"`
-	UserName    string `mapstructure:"user_name"`
+	Username    string `mapstructure:"username"`
 	ToAddress   string `mapstructure:"to_address"`
 	Password    string `mapstructure:"password"`
 	FailCount   string `mapstructure:"fail_count"`

@@ -21,7 +21,7 @@ type PasswordRepository struct {
 	ToAddressName      string
 	ChangedTimeName    string
 	FailCountName      string
-	UserName           string
+	Username           string
 	ChangedByName      string
 	TimestampName      string
 }
@@ -37,7 +37,7 @@ func NewDefaultPasswordRepository(client *firestore.Client, userCollection, pass
 }
 
 func NewPasswordRepositoryByConfig(client *firestore.Client, userCollectionName, passwordCollectionName, historyCollectionName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(client, userCollectionName, passwordCollectionName, historyCollectionName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.Timestamp)
+	return NewPasswordRepository(client, userCollectionName, passwordCollectionName, historyCollectionName, key, c.UserId, c.Password, c.ToAddress, c.Username, c.ChangedTime, c.FailCount, c.ChangedBy, c.Timestamp)
 }
 
 func NewPasswordRepository(client *firestore.Client, userCollectionName, passwordCollectionName, historyCollectionName, key string, userId, passwordName, toAddress, userName, passwordModifiedTimeName, failCountName, changedByName, timestampName string) *PasswordRepository {
@@ -61,19 +61,20 @@ func NewPasswordRepository(client *firestore.Client, userCollectionName, passwor
 		UserCollection:     userCollection,
 		PasswordCollection: passwordCollection,
 		HistoryCollection:  historyCollection,
+		Key:                key,
 		IdName:             userId,
 		ToAddressName:      toAddress,
 		PasswordName:       passwordName,
 		ChangedTimeName:    passwordModifiedTimeName,
 		FailCountName:      failCountName,
-		UserName:           userName,
+		Username:           userName,
 		ChangedByName:      changedByName,
 		TimestampName:      timestampName,
 	}
 }
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
-	docs, err := r.UserCollection.Where(r.UserName, "==", userName).Limit(1).Documents(ctx).GetAll()
+	docs, err := r.UserCollection.Where(r.Username, "==", userName).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return "", err
 	}
@@ -85,7 +86,7 @@ func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (st
 }
 
 func (r *PasswordRepository) GetUser(ctx context.Context, usernameOrEmail string) (string, string, string, string, error) {
-	docs, er0 := r.UserCollection.Where(r.UserName, "==", usernameOrEmail).Limit(1).Documents(ctx).GetAll()
+	docs, er0 := r.UserCollection.Where(r.Username, "==", usernameOrEmail).Limit(1).Documents(ctx).GetAll()
 	if er0 != nil {
 		return "", "", "", "", er0
 	}
@@ -101,7 +102,7 @@ func (r *PasswordRepository) GetUser(ctx context.Context, usernameOrEmail string
 	doc := docs[0]
 	userId := doc.Ref.ID
 
-	userName, er2 := doc.DataAt(r.UserName)
+	userName, er2 := doc.DataAt(r.Username)
 	if er2 != nil {
 		return "", "", "", "", er2
 	}

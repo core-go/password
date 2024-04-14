@@ -22,7 +22,7 @@ type PasswordRepository struct {
 	ToAddressName     string
 	ChangedTimeName   string
 	FailCountName     string
-	UserName          string
+	Username          string
 	ChangedByName     string
 	HistoryName       string
 	TimestampName     string
@@ -53,7 +53,7 @@ func NewPasswordRepository(session *gocql.Session, userTableName, passwordTableN
 		ToAddressName:     strings.ToLower(toAddress),
 		ChangedTimeName:   strings.ToLower(changedTimeName),
 		FailCountName:     strings.ToLower(failCountName),
-		UserName:          strings.ToLower(userName),
+		Username:          strings.ToLower(userName),
 		ChangedByName:     strings.ToLower(changedByName),
 		HistoryName:       strings.ToLower(historyName),
 		TimestampName:     strings.ToLower(timestampName),
@@ -61,7 +61,7 @@ func NewPasswordRepository(session *gocql.Session, userTableName, passwordTableN
 }
 
 func NewPasswordRepositoryByConfig(session *gocql.Session, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(session, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+	return NewPasswordRepository(session, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.Username, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
 func NewDefaultPasswordRepository(session *gocql.Session, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string) *PasswordRepository {
@@ -70,7 +70,7 @@ func NewDefaultPasswordRepository(session *gocql.Session, userTableName, passwor
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	var userId string
-	query := fmt.Sprintf("select %s from %s where %s = ? ALLOW FILTERING", r.IdName, r.UserTableName, r.UserName)
+	query := fmt.Sprintf("select %s from %s where %s = ? ALLOW FILTERING", r.IdName, r.UserTableName, r.Username)
 	session := r.Session
 	rows := session.Query(query, userName)
 	for _, _ = range rows.Iter().Columns() {
@@ -88,7 +88,7 @@ func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (st
 
 func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
 	query1 := `SELECT * FROM %s WHERE %s = ? ALLOW FILTERING`
-	queryUserName := fmt.Sprintf(query1, r.UserTableName, r.UserName)
+	queryUserName := fmt.Sprintf(query1, r.UserTableName, r.Username)
 	rowsUserName := r.Session.Query(queryUserName, userNameOrEmail).Iter()
 	var userId string
 	var userName string
@@ -103,7 +103,7 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 			if id, ok := row[r.IdName]; ok {
 				userId = id.(string)
 			}
-			if username, ok := row[r.UserName]; ok {
+			if username, ok := row[r.Username]; ok {
 				userName = username.(string)
 			}
 			if emailRow, ok := row[r.ToAddressName]; ok {
@@ -126,7 +126,7 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 			if id, ok := row1[r.IdName]; ok {
 				userId = id.(string)
 			}
-			if username, ok := row1[r.UserName]; ok {
+			if username, ok := row1[r.Username]; ok {
 				userName = username.(string)
 			}
 			if emailRow, ok := row1[r.ToAddressName]; ok {

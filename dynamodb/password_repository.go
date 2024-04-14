@@ -37,7 +37,7 @@ func NewPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordT
 		toAddress = "email"
 	}
 	if len(userName) == 0 {
-		userName = "userName"
+		userName = "username"
 	}
 	return &PasswordRepository{
 		DB:                dynamoDB,
@@ -57,11 +57,11 @@ func NewPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordT
 }
 
 func NewDefaultPasswordRepository(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName, key, changedTimeName, failCountName string) *PasswordRepository {
-	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, "password", "email", "userName", changedTimeName, failCountName, "", "history", "timestamp")
+	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, "password", "email", "username", changedTimeName, failCountName, "", "history", "timestamp")
 }
 
 func NewPasswordRepositoryByConfig(dynamoDB *dynamodb.DynamoDB, userTableName, passwordTableName, historyTableName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+	return NewPasswordRepository(dynamoDB, userTableName, passwordTableName, historyTableName, key, c.Password, c.ToAddress, c.Username, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {

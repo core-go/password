@@ -24,7 +24,7 @@ type PasswordRepository struct {
 	ToAddressName     string
 	ChangedTimeName   string
 	FailCountName     string
-	UserName          string
+	Username          string
 	ChangedByName     string
 	HistoryName       string
 	TimestampName     string
@@ -40,7 +40,7 @@ func NewPasswordRepositoryByConfig(db *sql.DB, userTableName, passwordTableName,
 	driver.Valuer
 	sql.Scanner
 }) *PasswordRepository {
-	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp, max, toArray)
+	return NewPasswordRepository(db, userTableName, passwordTableName, historyTableName, key, c.UserId, c.Password, c.ToAddress, c.Username, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp, max, toArray)
 }
 
 func NewDefaultPasswordRepository(db *sql.DB, userTableName, passwordTableName, historyTableName, key string, userId, changedTimeName, failCountName string, max int, toArray func(interface{}) interface {
@@ -79,7 +79,7 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 		ToAddressName:     strings.ToLower(toAddress),
 		ChangedTimeName:   strings.ToLower(changedTimeName),
 		FailCountName:     strings.ToLower(failCountName),
-		UserName:          strings.ToLower(userName),
+		Username:          strings.ToLower(userName),
 		ChangedByName:     strings.ToLower(changedByName),
 		HistoryName:       strings.ToLower(historyName),
 		TimestampName:     strings.ToLower(timestampName),
@@ -90,7 +90,7 @@ func NewPasswordRepository(db *sql.DB, userTableName, passwordTableName, history
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
 	var userId []string
-	query := fmt.Sprintf("select distinct `%s` from %s where %s = %s", r.IdName, r.UserTableName, r.UserName, r.BuildParam(0))
+	query := fmt.Sprintf("select distinct `%s` from %s where %s = %s", r.IdName, r.UserTableName, r.Username, r.BuildParam(0))
 	rows, err := r.Database.Query(query, userName)
 	if err != nil {
 		return "", err
@@ -119,13 +119,13 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 					FROM %s AS us
 					WHERE us.%s = %s or us.%s = %s`
 	if r.PasswordTableName != r.UserTableName {
-		query = fmt.Sprintf(query1, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.PasswordTableName, r.IdName, r.IdName, r.UserName,
+		query = fmt.Sprintf(query1, r.IdName, r.Username, r.ToAddressName, r.PasswordName, r.UserTableName, r.PasswordTableName, r.IdName, r.IdName, r.Username,
 			r.BuildParam(1),
 			r.ToAddressName,
 			r.BuildParam(2),
 		)
 	} else {
-		query = fmt.Sprintf(query2, r.IdName, r.UserName, r.ToAddressName, r.PasswordName, r.UserTableName, r.UserName,
+		query = fmt.Sprintf(query2, r.IdName, r.Username, r.ToAddressName, r.PasswordName, r.UserTableName, r.Username,
 			r.BuildParam(1),
 			r.ToAddressName,
 			r.BuildParam(2),
@@ -169,10 +169,10 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 	} else if _, ok := arr[r.IdName].(string); ok {
 		userId = arr[r.IdName].(string)
 	}
-	if _, ok := arr[r.UserName].([]byte); ok {
-		userName = string(arr[r.UserName].([]byte))
-	} else if _, ok := arr[r.UserName].(string); ok {
-		userName = arr[r.UserName].(string)
+	if _, ok := arr[r.Username].([]byte); ok {
+		userName = string(arr[r.Username].([]byte))
+	} else if _, ok := arr[r.Username].(string); ok {
+		userName = arr[r.Username].(string)
 	}
 	if _, ok := arr[r.ToAddressName].([]byte); ok {
 		email = string(arr[r.ToAddressName].([]byte))

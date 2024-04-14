@@ -21,7 +21,7 @@ type PasswordRepository struct {
 	ToAddressName      string
 	ChangedTimeName    string
 	FailCountName      string
-	UserName           string
+	Username           string
 	ChangedByName      string
 	HistoryName        string
 	TimestampName      string
@@ -44,7 +44,7 @@ func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordColle
 		toAddress = "email"
 	}
 	if len(userName) == 0 {
-		userName = "userName"
+		userName = "username"
 	}
 	return &PasswordRepository{
 		UserCollection:     userCollection,
@@ -55,7 +55,7 @@ func NewPasswordRepository(db *mongo.Database, userCollectionName, passwordColle
 		PasswordName:       passwordName,
 		ChangedTimeName:    changedTimeName,
 		FailCountName:      failCountName,
-		UserName:           userName,
+		Username:           userName,
 		ChangedByName:      changedByName,
 		HistoryName:        historyName,
 		TimestampName:      timestampName,
@@ -67,11 +67,11 @@ func NewDefaultPasswordRepository(db *mongo.Database, userCollection, passwordCo
 }
 
 func NewPasswordRepositoryByConfig(db *mongo.Database, userCollectionName, passwordCollectionName, historyCollectionName string, key string, c p.PasswordSchemaConfig) *PasswordRepository {
-	return NewPasswordRepository(db, userCollectionName, passwordCollectionName, historyCollectionName, key, c.Password, c.ToAddress, c.UserName, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
+	return NewPasswordRepository(db, userCollectionName, passwordCollectionName, historyCollectionName, key, c.Password, c.ToAddress, c.Username, c.ChangedTime, c.FailCount, c.ChangedBy, c.History, c.Timestamp)
 }
 
 func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (string, error) {
-	query := bson.M{r.UserName: userName}
+	query := bson.M{r.Username: userName}
 	x := r.UserCollection.FindOne(ctx, query)
 	er1 := x.Err()
 	if er1 != nil {
@@ -89,7 +89,7 @@ func (r *PasswordRepository) GetUserId(ctx context.Context, userName string) (st
 }
 
 func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string) (string, string, string, string, error) {
-	query := bson.M{"$or": []bson.M{{r.UserName: userNameOrEmail}, {r.ToAddressName: userNameOrEmail}}}
+	query := bson.M{"$or": []bson.M{{r.Username: userNameOrEmail}, {r.ToAddressName: userNameOrEmail}}}
 	x := r.UserCollection.FindOne(ctx, query)
 	er1 := x.Err()
 	if er1 != nil {
@@ -103,7 +103,7 @@ func (r *PasswordRepository) GetUser(ctx context.Context, userNameOrEmail string
 		return "", "", "", "", er3
 	}
 	userId := k.Lookup("_id").StringValue()
-	userName := k.Lookup(r.UserName).StringValue()
+	userName := k.Lookup(r.Username).StringValue()
 	email := k.Lookup(r.ToAddressName).StringValue()
 
 	if r.HistoryCollection.Name() == r.UserCollection.Name() {
